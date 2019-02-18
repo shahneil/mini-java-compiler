@@ -1,10 +1,23 @@
 package miniJava.SyntacticAnalyzer;
 
 import miniJava.ErrorReporter;
+import miniJava.AbstractSyntaxTrees.ClassDecl;
+import miniJava.AbstractSyntaxTrees.ClassDeclList;
+import miniJava.AbstractSyntaxTrees.FieldDecl;
+import miniJava.AbstractSyntaxTrees.FieldDeclList;
+import miniJava.AbstractSyntaxTrees.MemberDecl;
+import miniJava.AbstractSyntaxTrees.MethodDecl;
+import miniJava.AbstractSyntaxTrees.MethodDeclList;
+import miniJava.AbstractSyntaxTrees.Package;
+import miniJava.AbstractSyntaxTrees.ParameterDeclList;
+import miniJava.AbstractSyntaxTrees.Statement;
+import miniJava.AbstractSyntaxTrees.StatementList;
+import miniJava.AbstractSyntaxTrees.Terminal;
+import miniJava.AbstractSyntaxTrees.TypeDenoter;
 
 public class Parser {
 
-	private boolean trace = false;
+	private boolean trace = true;
 	private Scanner scanner;
 	private ErrorReporter reporter;
 	private Token currentToken;
@@ -74,81 +87,127 @@ public class Parser {
 		}
 	}
 
-	// Program ::= (ClassDeclaration)* eot
-	private void parseProgram() throws SyntaxError {
+	/**
+	 * Program -> (ClassDeclaration)* eot
+	 */
+	Package parseProgram() throws SyntaxError {
+		ClassDeclList cdl = new ClassDeclList();
+		Package p = new Package(cdl, null);
+
 		while (currentToken.kind == Token.CLASS) {
-			parseClassDeclaration();
+			ClassDecl cd = parseClassDeclaration();
+			cdl.add(cd);
 		}
+
 		accept(Token.EOT);
+		return p;
 	}
 
-	// ClassDeclaration ::= class id { (FieldDeclaration | MethodDeclaration)* }
-	private void parseClassDeclaration() throws SyntaxError {
+	/**
+	 * ClassDeclaration -> class id { (FieldDeclaration | MethodDeclaration)* }
+	 */
+	ClassDecl parseClassDeclaration() throws SyntaxError {
+		String cn = currentToken.spelling;
 		accept(Token.CLASS);
 		accept(Token.ID);
 		accept(Token.LCURLY);
 
-		// starters of (FieldDeclaration | MethodDeclaration)
-		while (currentToken.kind == Token.PUBLIC || currentToken.kind == Token.PRIVATE
-				|| currentToken.kind == Token.STATIC || currentToken.kind == Token.INT
-				|| currentToken.kind == Token.BOOLEAN || currentToken.kind == Token.ID
-				|| currentToken.kind == Token.VOID) {
-			parseFieldOrMethodDeclaration();
-		}
+		FieldDeclList fdl = new FieldDeclList();
+		MethodDeclList mdl = new MethodDeclList();
+		ClassDecl cd = new ClassDecl(cn, fdl, mdl, null);
 
+		while (startsMemberDeclaration(currentToken)) {
+			MemberDecl md = parseMemberDeclaration();
+			if (md instanceof FieldDecl) {
+				fdl.add((FieldDecl) md);
+			} else if (md instanceof MethodDecl) {
+				mdl.add((MethodDecl) md);
+			}
+		}
 		accept(Token.RCURLY);
+		return cd;
 	}
 
-	// (FieldDeclaration | MethodDeclaration) ::=
-	// (Visibility Access (Type|void) id ('('ParameterList?')' {Statement*})*)*
-	private void parseFieldOrMethodDeclaration() throws SyntaxError {
-		parseVisibility();
-		parseAccess();
+	/**
+	 * FieldDeclaration -> Visibility Access Type id;
+	 * 
+	 * MethodDeclaration -> Visibility Access (Type|void) id '(' ParameterList? ')'
+	 * { Statement* }
+	 */
+	MemberDecl parseMemberDeclaration() throws SyntaxError {
+		boolean isPrivate = !parseVisibility();
+		boolean isStatic = parseAccess();
 
-		// (Type|void) id
+		TypeDenoter td;
 		if (startsType(currentToken)) {
-			parseType();
+			td = parseType();
 		} else {
 			accept(Token.VOID);
-			// If void, we require parameter list and statement.
 		}
+
+		String name = currentToken.spelling;
 		accept(Token.ID);
 
-		// '(' ParameterList? ')' { Statement* }
-		if (currentToken.kind == Token.LPAREN) {
-			acceptIt();
-			// starters for ParameterList
-			if (currentToken.kind == Token.INT || currentToken.kind == Token.BOOLEAN || currentToken.kind == Token.ID) {
-				parseParameterList();
-			}
-			accept(Token.RPAREN);
-			accept(Token.LCURLY);
+		// Need for both FieldDeclaration and MethodDeclaration
+		FieldDecl fd = new FieldDecl(isPrivate, isStatic, td, name, null);
 
+		// Resolve ambiguity
+		if (currentToken.kind == Token.SEMICOLON) { // FieldDeclaration
+			acceptIt();
+			return fd;
+		} else { // MethodDeclaration
+			ParameterDeclList pl;
+			StatementList sl;
+
+			accept(Token.LPAREN);
+			pl = parseParameterList();
+			accept(Token.RPAREN);
+
+			accept(Token.LCURLY);
 			while (startsStatement(currentToken)) {
-				parseStatement();
+				Statement s = parseStatement();
+				sl.add(s);
 			}
 			accept(Token.RCURLY);
-		} else {
-			accept(Token.SEMICOLON);
+
+			return new MethodDecl(fd, pl, sl, null);
 		}
 	}
 
-	// Visibility ::= (public|private)?
-	private void parseVisibility() throws SyntaxError {
-		if (currentToken.kind == Token.PUBLIC || currentToken.kind == Token.PRIVATE) {
+	/**
+	 * Visibility -> (public|private)?
+	 * 
+	 * @return false if private
+	 */
+	boolean parseVisibility() throws SyntaxError {
+		if (currentToken.kind == Token.PRIVATE) {
+			acceptIt();
+			return false;
+		} else if (currentToken.kind == Token.PUBLIC) {
 			acceptIt();
 		}
+		return true;
 	}
 
-	// Access ::= static?
-	private void parseAccess() throws SyntaxError {
+	/**
+	 * Access -> static?
+	 * 
+	 * @return true if static
+	 */
+	boolean parseAccess() throws SyntaxError {
 		if (currentToken.kind == Token.STATIC) {
 			acceptIt();
+			return true;
 		}
+		return false;
 	}
 
-	// Type ::= (int|id)([])? | boolean
-	private void parseType() throws SyntaxError {
+	/**
+	 * TODO: Implement
+	 * 
+	 * Type -> (int|id)([])? | boolean
+	 */
+	TypeDenoter parseType() throws SyntaxError {
 		if (currentToken.kind == Token.INT || currentToken.kind == Token.ID) {
 			acceptIt();
 			if (currentToken.kind == Token.LBRACKET) {
@@ -160,8 +219,12 @@ public class Parser {
 		}
 	}
 
-	// ParameterList ::= Type id (, Type id)*
-	private void parseParameterList() throws SyntaxError {
+	/**
+	 * TODO: Implement
+	 * 
+	 * ParameterList -> Type id (, Type id)*
+	 */
+	ParameterDeclList parseParameterList() throws SyntaxError {
 		parseType();
 		accept(Token.ID);
 		while (currentToken.kind == Token.COMMA) {
@@ -171,7 +234,11 @@ public class Parser {
 		}
 	}
 
-	// ArgumentList ::= Expression (, Expression)*
+	/**
+	 * TODO: Implement
+	 * 
+	 * ArgumentList -> Expression (, Expression)*
+	 */
 	private void parseArgumentList() throws SyntaxError {
 		parseExpression();
 		while (currentToken.kind == Token.COMMA) {
@@ -180,7 +247,13 @@ public class Parser {
 		}
 	}
 
-	// Reference ::= (id|this) (. id)* ( [ Expression ] )?
+	/**
+	 * TODO: Implement
+	 * 
+	 * TODO: Split up into IdxReference
+	 * 
+	 * Reference -> (id|this) (. id)* ( [ Expression ] )?
+	 */
 	private void parseReference() throws SyntaxError {
 		if (currentToken.kind == Token.ID || currentToken.kind == Token.THIS) {
 			acceptIt();
@@ -196,8 +269,11 @@ public class Parser {
 		}
 	}
 
-	/* @formatter:off
-	 * Statement ::= 
+	/** 
+	 * TODO: Implement
+	 * 
+	 * @formatter:off
+	 * Statement -> 
 	 * 		{ Statement* }
 	 * 	|	Type id = Expression;
 	 *	| 	Reference ( = Expression; | '('ArgumentList?')' )
@@ -206,7 +282,7 @@ public class Parser {
 	 *	| 	while '('Expression')' Statement
 	 * @formatter:on
 	 */
-	private void parseStatement() throws SyntaxError {
+	Statement parseStatement() throws SyntaxError {
 		switch (currentToken.kind) {
 
 		case Token.LCURLY:
@@ -297,8 +373,12 @@ public class Parser {
 		}
 	}
 
-	// Expression ::= Expression' (binop Expression)*
-	private void parseExpression() throws SyntaxError {
+	/**
+	 * TODO: Implement
+	 * 
+	 * Expression -> Expression' (binop Expression)*
+	 */
+	Expression parseExpression() throws SyntaxError {
 		parseExpressionPrime();
 		while (startsBinop(currentToken)) {
 			acceptIt();
@@ -306,8 +386,11 @@ public class Parser {
 		}
 	}
 
-	/* @formatter:off
-	 * Expression' ::=
+	/** 
+	 * TODO: Implement
+	 * 
+	 * @formatter:off
+	 * Expression' ->
 	 * 		Reference ( '(' ArgumentList? ')' )?
 	 * 	| 	unop Expression'
 	 * 	| 	'(' Expression' ')'
@@ -372,12 +455,18 @@ public class Parser {
 	}
 
 	// unop ::= !|-
-	private void parseUnop() throws SyntaxError {
+	Terminal parseUnop() throws SyntaxError {
 		switch (currentToken.kind) {
 		case Token.NOT:
 		case Token.MINUS:
 			acceptIt();
 		}
+	}
+
+	boolean startsMemberDeclaration(Token token) {
+		return token.kind == Token.PUBLIC || token.kind == Token.PRIVATE || token.kind == Token.STATIC
+				|| token.kind == Token.INT || token.kind == Token.BOOLEAN || token.kind == Token.ID
+				|| token.kind == Token.VOID;
 	}
 
 	// binop ::= >|<|==|<=|>=|!=|&&|+|-|*|/| ||

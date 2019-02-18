@@ -2,6 +2,7 @@ package miniJava;
 
 import java.io.IOException;
 
+import miniJava.AbstractSyntaxTrees.AST;
 import miniJava.SyntacticAnalyzer.Parser;
 import miniJava.SyntacticAnalyzer.Scanner;
 import miniJava.SyntacticAnalyzer.SourceFile;
@@ -11,6 +12,7 @@ public class Compiler {
 	private static Scanner scanner;
 	private static Parser parser;
 	private static ErrorReporter reporter;
+	private static AST ast;
 
 	public static void main(String[] args) throws IOException {
 		if (args.length != 1) {
@@ -34,10 +36,15 @@ public class Compiler {
 		scanner = new Scanner(sourceFile);
 		parser = new Parser(scanner, reporter);
 
-		parser.parse();
+		parser.parse(); // TODO: parser returns AST
 
 		boolean success = !reporter.hasErrors();
 		if (success) {
+			// TODO: Display constructed AST using showTree method in ASTDisplay class
+			// ASTDisplay display = new ASTDisplay();
+			// display.showTree(ast);
+
+			// TODO: Delete following line after implementing AST
 			System.out.println("Valid miniJava program " + sourceName);
 			System.exit(0);
 		} else {
