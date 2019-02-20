@@ -78,10 +78,15 @@ public class Scanner {
 					}
 					skipIt();
 				} else if (currentChar == '*') {
+					skipIt();
 					char prevChar = ' ';
-					while (prevChar != '*' || currentChar != '/' && currentChar != SourceFile.eot) {
+					while (currentChar != SourceFile.eot && (prevChar != '*' || currentChar != '/')) {
 						prevChar = currentChar;
 						skipIt();
+					}
+					// Program ended without closing comment
+					if (currentChar == SourceFile.eot) {
+						return new Token(Token.ERROR, "<error>", sourceFile.getCurrentPosition());
 					}
 					skipIt();
 				} else {

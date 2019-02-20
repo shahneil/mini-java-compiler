@@ -1,10 +1,14 @@
 package miniJava.SyntacticAnalyzer;
 
 import miniJava.ErrorReporter;
+import miniJava.AbstractSyntaxTrees.AST;
 import miniJava.AbstractSyntaxTrees.ArrayType;
 import miniJava.AbstractSyntaxTrees.AssignStmt;
 import miniJava.AbstractSyntaxTrees.BaseType;
+import miniJava.AbstractSyntaxTrees.BinaryExpr;
 import miniJava.AbstractSyntaxTrees.BlockStmt;
+import miniJava.AbstractSyntaxTrees.BooleanLiteral;
+import miniJava.AbstractSyntaxTrees.CallExpr;
 import miniJava.AbstractSyntaxTrees.CallStmt;
 import miniJava.AbstractSyntaxTrees.ClassDecl;
 import miniJava.AbstractSyntaxTrees.ClassDeclList;
@@ -16,14 +20,20 @@ import miniJava.AbstractSyntaxTrees.FieldDeclList;
 import miniJava.AbstractSyntaxTrees.IdRef;
 import miniJava.AbstractSyntaxTrees.Identifier;
 import miniJava.AbstractSyntaxTrees.IfStmt;
+import miniJava.AbstractSyntaxTrees.IntLiteral;
 import miniJava.AbstractSyntaxTrees.IxRef;
+import miniJava.AbstractSyntaxTrees.LiteralExpr;
 import miniJava.AbstractSyntaxTrees.MemberDecl;
 import miniJava.AbstractSyntaxTrees.MethodDecl;
 import miniJava.AbstractSyntaxTrees.MethodDeclList;
+import miniJava.AbstractSyntaxTrees.NewArrayExpr;
+import miniJava.AbstractSyntaxTrees.NewObjectExpr;
+import miniJava.AbstractSyntaxTrees.Operator;
 import miniJava.AbstractSyntaxTrees.Package;
 import miniJava.AbstractSyntaxTrees.ParameterDecl;
 import miniJava.AbstractSyntaxTrees.ParameterDeclList;
 import miniJava.AbstractSyntaxTrees.QualRef;
+import miniJava.AbstractSyntaxTrees.RefExpr;
 import miniJava.AbstractSyntaxTrees.Reference;
 import miniJava.AbstractSyntaxTrees.ReturnStmt;
 import miniJava.AbstractSyntaxTrees.Statement;
@@ -32,13 +42,14 @@ import miniJava.AbstractSyntaxTrees.Terminal;
 import miniJava.AbstractSyntaxTrees.ThisRef;
 import miniJava.AbstractSyntaxTrees.TypeDenoter;
 import miniJava.AbstractSyntaxTrees.TypeKind;
+import miniJava.AbstractSyntaxTrees.UnaryExpr;
 import miniJava.AbstractSyntaxTrees.VarDecl;
 import miniJava.AbstractSyntaxTrees.VarDeclStmt;
 import miniJava.AbstractSyntaxTrees.WhileStmt;
 
 public class Parser {
 
-	private boolean trace = true;
+	private boolean trace = false;
 	private Scanner scanner;
 	private ErrorReporter reporter;
 	private Token currentToken;
@@ -99,13 +110,15 @@ public class Parser {
 	/**
 	 * Parse source program.
 	 */
-	public void parse() {
+	public AST parse() {
+		AST ast = null;
 		currentToken = scanner.scan();
 		try {
-			parseProgram();
+			ast = parseProgram();
 		} catch (SyntaxError e) {
 			// Compiler driver will take care of error handling/reporting.
 		}
+		return ast;
 	}
 
 	/**
@@ -128,8 +141,8 @@ public class Parser {
 	 * ClassDeclaration -> class id { (FieldDeclaration | MethodDeclaration)* }
 	 */
 	ClassDecl parseClassDeclaration() throws SyntaxError {
-		String cn = currentToken.spelling;
 		accept(Token.CLASS);
+		String cn = currentToken.spelling;
 		accept(Token.ID);
 		accept(Token.LCURLY);
 
@@ -158,12 +171,14 @@ public class Parser {
 	MemberDecl parseMemberDeclaration() throws SyntaxError {
 		boolean isPrivate = !parseVisibility();
 		boolean isStatic = parseAccess();
+		boolean isVoid = false;
 
 		TypeDenoter td;
 		if (startsType(currentToken)) {
 			td = parseType();
 		} else {
 			accept(Token.VOID);
+			isVoid = true;
 			td = new BaseType(TypeKind.VOID, null);
 		}
 
@@ -174,15 +189,17 @@ public class Parser {
 		FieldDecl fd = new FieldDecl(isPrivate, isStatic, td, name, null);
 
 		// Resolve ambiguity
-		if (currentToken.kind == Token.SEMICOLON) { // FieldDeclaration
+		if (currentToken.kind == Token.SEMICOLON && !isVoid) { // FieldDeclaration
 			acceptIt();
 			return fd;
 		} else { // MethodDeclaration
-			ParameterDeclList pl;
+			ParameterDeclList pl = new ParameterDeclList();
 			StatementList sl = new StatementList();
 
 			accept(Token.LPAREN);
-			pl = parseParameterList();
+			if (startsType(currentToken)) {
+				pl = parseParameterList();
+			}
 			accept(Token.RPAREN);
 
 			accept(Token.LCURLY);
@@ -304,7 +321,7 @@ public class Parser {
 	 * IxReference -> Reference [ Expression ]
 	 */
 	Reference parseReference() throws SyntaxError {
-		Reference ref;
+		Reference ref = null;
 
 		// Base reference
 		if (currentToken.kind == Token.ID) {
@@ -312,8 +329,7 @@ public class Parser {
 			acceptIt();
 		} else if (currentToken.kind == Token.THIS) {
 			ref = new ThisRef(null);
-		} else {
-			throw new SyntaxError();
+			acceptIt();
 		}
 
 		// Qualified references
@@ -441,8 +457,11 @@ public class Parser {
 			}
 
 			// Call statement
-			if (currentToken.kind == Token.LPAREN) {
-				acceptIt();
+			else {
+				if (r instanceof IxRef) {
+					parseError("Invalid call statement - cannot call index reference.");
+				}
+				accept(Token.LPAREN);
 				ExprList el = new ExprList();
 				if (startsExpression(currentToken)) {
 					el = parseArgumentList();
@@ -456,107 +475,195 @@ public class Parser {
 	}
 
 	/**
-	 * TODO: Implement
-	 * 
-	 * Expression -> Expression' (binop Expression)*
+	 * Expression -> Expression' ((*|/) Expression)*
 	 */
 	Expression parseExpression() throws SyntaxError {
-		parseExpressionPrime();
-		while (startsBinop(currentToken)) {
+		Expression e1 = parseExpressionP1();
+		while (currentToken.kind == Token.MULT || currentToken.kind == Token.DIV) {
+			Operator o = new Operator(currentToken);
 			acceptIt();
-			parseExpression();
+			Expression e2 = parseExpression();
+			return new BinaryExpr(o, e1, e2, null);
 		}
+		return e1;
 	}
 
-	/** 
-	 * TODO: Implement
-	 * 
-	 * @formatter:off
-	 * Expression' ->
-	 * 		Reference ( '(' ArgumentList? ')' )?
-	 * 	| 	unop Expression'
-	 * 	| 	'(' Expression' ')'
-	 * 	| 	num | true | false
-	 *  | 	new ( id '(' ')' | int [ Expression' ] | id [ Expression' ] )
-	 * @formatter:on
-	 * 
+	/**
+	 * Expression' -> Expression'' ((+|-) Expression)*
 	 */
-	private void parseExpressionPrime() throws SyntaxError {
-		switch (currentToken.kind) {
+	Expression parseExpressionP1() throws SyntaxError {
+		Expression e1 = parseExpressionP2();
+		while (currentToken.kind == Token.ADD || currentToken.kind == Token.MINUS) {
+			Operator o = new Operator(currentToken);
+			acceptIt();
+			Expression e2 = parseExpression();
+			return new BinaryExpr(o, e1, e2, null);
+		}
+		return e1;
+	}
 
-		case Token.ID:
-		case Token.THIS:
-			parseReference();
+	/**
+	 * Expression'' -> Expression''' ((<=|<|>|>=) Expression)*
+	 */
+	Expression parseExpressionP2() throws SyntaxError {
+		Expression e1 = parseExpressionP3();
+		while (currentToken.kind == Token.LTE || currentToken.kind == Token.LT || currentToken.kind == Token.GT
+				|| currentToken.kind == Token.GTE) {
+			Operator o = new Operator(currentToken);
+			acceptIt();
+			Expression e2 = parseExpression();
+			return new BinaryExpr(o, e1, e2, null);
+		}
+		return e1;
+	}
+
+	/**
+	 * Expression''' -> Expression'4 ((==|!=) Expression)*
+	 */
+	Expression parseExpressionP3() throws SyntaxError {
+		Expression e1 = parseExpressionP4();
+		while (currentToken.kind == Token.EQ || currentToken.kind == Token.NEQ) {
+			Operator o = new Operator(currentToken);
+			acceptIt();
+			Expression e2 = parseExpression();
+			return new BinaryExpr(o, e1, e2, null);
+		}
+		return e1;
+	}
+
+	/**
+	 * Expression'4 -> Expression'5 (&& Expression)*
+	 */
+	Expression parseExpressionP4() throws SyntaxError {
+		Expression e1 = parseExpressionP5();
+		while (currentToken.kind == Token.AND) {
+			Operator o = new Operator(currentToken);
+			acceptIt();
+			Expression e2 = parseExpression();
+			return new BinaryExpr(o, e1, e2, null);
+		}
+		return e1;
+	}
+
+	/**
+	 * Expression'5 -> Expression'6 (&& Expression)*
+	 */
+	Expression parseExpressionP5() throws SyntaxError {
+		Expression e1 = parseExpressionP6();
+		while (currentToken.kind == Token.OR) {
+			Operator o = new Operator(currentToken);
+			acceptIt();
+			Expression e2 = parseExpression();
+			return new BinaryExpr(o, e1, e2, null);
+		}
+		return e1;
+	}
+
+	/**
+	 * @formatter:off
+	 * Expression'6 ->
+	 * 		Reference							[RefExpr]
+	 * 	|	Reference '(' ArgumentList? ')'		[CallExpr]
+	 * 	| 	unop Expression						[UnaryExpr]
+	 * 	| 	'(' Expression ')'					[Explicit Precedence]
+	 * 	| 	num | true | false					[LiteralExpr]
+	 *  | 	new ( id '(' ')' | int [ Expression ] | id [ Expression ] )
+	 * @formatter:on
+	 */
+	Expression parseExpressionP6() throws SyntaxError {
+
+		// Reference/call expression
+		if (startsReference(currentToken)) {
+			Reference r = parseReference();
+
+			// Call expression
 			if (currentToken.kind == Token.LPAREN) {
+				if (r instanceof IxRef) {
+					parseError("Invalid call expression - cannot call index reference.");
+				}
 				acceptIt();
+				ExprList el = new ExprList();
 				if (startsExpression(currentToken)) {
-					parseArgumentList();
+					el = parseArgumentList();
 				}
 				accept(Token.RPAREN);
+				return new CallExpr(r, el, null);
 			}
-			return;
+			return new RefExpr(r, null);
+		}
 
-		case Token.NOT:
-		case Token.MINUS:
-			parseUnop();
-			parseExpression();
-			return;
-
-		case Token.LPAREN:
+		// Unary expression
+		else if (currentToken.kind == Token.NOT || currentToken.kind == Token.MINUS) {
+			Operator o = new Operator(currentToken);
 			acceptIt();
-			parseExpression();
+			Expression e = parseExpression();
+			return new UnaryExpr(o, e, null);
+		}
+
+		// Explicit precedence
+		else if (currentToken.kind == Token.LPAREN) {
+			acceptIt();
+			Expression e = parseExpression();
 			accept(Token.RPAREN);
-			return;
+			return e;
+		}
 
-		case Token.NUM:
-		case Token.TRUE:
-		case Token.FALSE:
+		// Integer literal expression
+		else if (currentToken.kind == Token.NUM) {
+			Terminal t = new IntLiteral(currentToken);
 			acceptIt();
-			return;
+			return new LiteralExpr(t, null);
+		}
 
-		case Token.NEW:
+		// Boolean literal expression
+		else if (currentToken.kind == Token.TRUE || currentToken.kind == Token.FALSE) {
+			Terminal t = new BooleanLiteral(currentToken);
 			acceptIt();
+			return new LiteralExpr(t, null);
+		}
+
+		// New expression
+		else {
+			accept(Token.NEW);
+
 			if (currentToken.kind == Token.ID) {
+				Identifier id = new Identifier(currentToken);
+				ClassType ct = new ClassType(id, null);
 				acceptIt();
+
+				// New object expression
 				if (currentToken.kind == Token.LPAREN) {
 					acceptIt();
 					accept(Token.RPAREN);
-				} else if (currentToken.kind == Token.LBRACKET) {
-					acceptIt();
-					parseExpression();
-					accept(Token.RBRACKET);
+					return new NewObjectExpr(ct, null);
 				}
-			} else if (currentToken.kind == Token.INT) {
+
+				// New object array expression
+				else if (currentToken.kind == Token.LBRACKET) {
+					acceptIt();
+					Expression e = parseExpression();
+					accept(Token.RBRACKET);
+					return new NewArrayExpr(ct, e, null);
+				}
+			}
+
+			// New integer array expression
+			else if (currentToken.kind == Token.INT) {
+				TypeDenoter t = new BaseType(TypeKind.INT, null);
 				acceptIt();
 				accept(Token.LBRACKET);
-				parseExpression();
+				Expression e = parseExpression();
 				accept(Token.RBRACKET);
+				return new NewArrayExpr(t, e, null);
 			}
-			return;
 		}
-	}
-
-	// unop ::= !|-
-	Terminal parseUnop() throws SyntaxError {
-		switch (currentToken.kind) {
-		case Token.NOT:
-		case Token.MINUS:
-			acceptIt();
-		}
+		throw new SyntaxError();
 	}
 
 	boolean startsMemberDeclaration(Token token) {
 		return token.kind == Token.PUBLIC || token.kind == Token.PRIVATE || token.kind == Token.STATIC
 				|| token.kind == Token.INT || token.kind == Token.BOOLEAN || token.kind == Token.ID
 				|| token.kind == Token.VOID;
-	}
-
-	// binop ::= >|<|==|<=|>=|!=|&&|+|-|*|/| ||
-	private boolean startsBinop(Token token) {
-		return token.kind == Token.GT || token.kind == Token.LT || token.kind == Token.EQ || token.kind == Token.LTE
-				|| token.kind == Token.GTE || token.kind == Token.NEQ || token.kind == Token.AND
-				|| token.kind == Token.OR || token.kind == Token.ADD || token.kind == Token.MINUS
-				|| token.kind == Token.MULT || token.kind == Token.DIV;
 	}
 
 	private boolean startsStatement(Token token) {
