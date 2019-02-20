@@ -1,19 +1,40 @@
 package miniJava.SyntacticAnalyzer;
 
 import miniJava.ErrorReporter;
+import miniJava.AbstractSyntaxTrees.ArrayType;
+import miniJava.AbstractSyntaxTrees.AssignStmt;
+import miniJava.AbstractSyntaxTrees.BaseType;
+import miniJava.AbstractSyntaxTrees.BlockStmt;
+import miniJava.AbstractSyntaxTrees.CallStmt;
 import miniJava.AbstractSyntaxTrees.ClassDecl;
 import miniJava.AbstractSyntaxTrees.ClassDeclList;
+import miniJava.AbstractSyntaxTrees.ClassType;
+import miniJava.AbstractSyntaxTrees.ExprList;
+import miniJava.AbstractSyntaxTrees.Expression;
 import miniJava.AbstractSyntaxTrees.FieldDecl;
 import miniJava.AbstractSyntaxTrees.FieldDeclList;
+import miniJava.AbstractSyntaxTrees.IdRef;
+import miniJava.AbstractSyntaxTrees.Identifier;
+import miniJava.AbstractSyntaxTrees.IfStmt;
+import miniJava.AbstractSyntaxTrees.IxRef;
 import miniJava.AbstractSyntaxTrees.MemberDecl;
 import miniJava.AbstractSyntaxTrees.MethodDecl;
 import miniJava.AbstractSyntaxTrees.MethodDeclList;
 import miniJava.AbstractSyntaxTrees.Package;
+import miniJava.AbstractSyntaxTrees.ParameterDecl;
 import miniJava.AbstractSyntaxTrees.ParameterDeclList;
+import miniJava.AbstractSyntaxTrees.QualRef;
+import miniJava.AbstractSyntaxTrees.Reference;
+import miniJava.AbstractSyntaxTrees.ReturnStmt;
 import miniJava.AbstractSyntaxTrees.Statement;
 import miniJava.AbstractSyntaxTrees.StatementList;
 import miniJava.AbstractSyntaxTrees.Terminal;
+import miniJava.AbstractSyntaxTrees.ThisRef;
 import miniJava.AbstractSyntaxTrees.TypeDenoter;
+import miniJava.AbstractSyntaxTrees.TypeKind;
+import miniJava.AbstractSyntaxTrees.VarDecl;
+import miniJava.AbstractSyntaxTrees.VarDeclStmt;
+import miniJava.AbstractSyntaxTrees.WhileStmt;
 
 public class Parser {
 
@@ -143,6 +164,7 @@ public class Parser {
 			td = parseType();
 		} else {
 			accept(Token.VOID);
+			td = new BaseType(TypeKind.VOID, null);
 		}
 
 		String name = currentToken.spelling;
@@ -157,7 +179,7 @@ public class Parser {
 			return fd;
 		} else { // MethodDeclaration
 			ParameterDeclList pl;
-			StatementList sl;
+			StatementList sl = new StatementList();
 
 			accept(Token.LPAREN);
 			pl = parseParameterList();
@@ -203,174 +225,234 @@ public class Parser {
 	}
 
 	/**
-	 * TODO: Implement
-	 * 
-	 * Type -> (int|id)([])? | boolean
+	 * Type -> int | boolean | id | (int|id)[]
 	 */
 	TypeDenoter parseType() throws SyntaxError {
-		if (currentToken.kind == Token.INT || currentToken.kind == Token.ID) {
+		if (currentToken.kind == Token.INT) {
 			acceptIt();
 			if (currentToken.kind == Token.LBRACKET) {
 				acceptIt();
 				accept(Token.RBRACKET);
+				return new ArrayType(new BaseType(TypeKind.INT, null), null);
+			} else {
+				return new BaseType(TypeKind.INT, null);
 			}
-		} else if (currentToken.kind == Token.BOOLEAN) {
+		} else if (currentToken.kind == Token.ID) {
+			Identifier cn = new Identifier(currentToken);
 			acceptIt();
+			if (currentToken.kind == Token.LBRACKET) {
+				acceptIt();
+				accept(Token.RBRACKET);
+				return new ArrayType(new ClassType(cn, null), null);
+			} else {
+				return new ClassType(cn, null);
+			}
+		} else {
+			accept(Token.BOOLEAN);
+			return new BaseType(TypeKind.BOOLEAN, null);
 		}
 	}
 
 	/**
-	 * TODO: Implement
-	 * 
 	 * ParameterList -> Type id (, Type id)*
 	 */
 	ParameterDeclList parseParameterList() throws SyntaxError {
-		parseType();
+		ParameterDeclList pl = new ParameterDeclList();
+		ParameterDecl p;
+		String name;
+		TypeDenoter t;
+
+		t = parseType();
+		name = currentToken.spelling;
 		accept(Token.ID);
+		p = new ParameterDecl(t, name, null);
+		pl.add(p);
+
 		while (currentToken.kind == Token.COMMA) {
 			acceptIt();
-			parseType();
+			t = parseType();
+			name = currentToken.spelling;
 			accept(Token.ID);
+			pl.add(p);
 		}
+
+		return pl;
 	}
 
 	/**
-	 * TODO: Implement
-	 * 
 	 * ArgumentList -> Expression (, Expression)*
 	 */
-	private void parseArgumentList() throws SyntaxError {
-		parseExpression();
+	ExprList parseArgumentList() throws SyntaxError {
+		ExprList el = new ExprList();
+		Expression e;
+
+		e = parseExpression();
+		el.add(e);
+
 		while (currentToken.kind == Token.COMMA) {
 			acceptIt();
-			parseExpression();
+			e = parseExpression();
+			el.add(e);
 		}
+
+		return el;
 	}
 
 	/**
-	 * TODO: Implement
+	 * Reference -> id | this | Reference.id
 	 * 
-	 * TODO: Split up into IdxReference
-	 * 
-	 * Reference -> (id|this) (. id)* ( [ Expression ] )?
+	 * IxReference -> Reference [ Expression ]
 	 */
-	private void parseReference() throws SyntaxError {
-		if (currentToken.kind == Token.ID || currentToken.kind == Token.THIS) {
+	Reference parseReference() throws SyntaxError {
+		Reference ref;
+
+		// Base reference
+		if (currentToken.kind == Token.ID) {
+			ref = new IdRef(new Identifier(currentToken), null);
 			acceptIt();
-			while (currentToken.kind == Token.DOT) {
-				acceptIt();
-				accept(Token.ID);
-			}
-			if (currentToken.kind == Token.LBRACKET) {
-				acceptIt();
-				parseExpression();
-				accept(Token.RBRACKET);
-			}
+		} else if (currentToken.kind == Token.THIS) {
+			ref = new ThisRef(null);
+		} else {
+			throw new SyntaxError();
 		}
+
+		// Qualified references
+		while (currentToken.kind == Token.DOT) {
+			acceptIt();
+			ref = new QualRef(ref, new Identifier(currentToken), null);
+			accept(Token.ID);
+		}
+
+		// Index references
+		if (currentToken.kind == Token.LBRACKET) {
+			acceptIt();
+			Expression e = parseExpression();
+			accept(Token.RBRACKET);
+			ref = new IxRef(ref, e, null);
+		}
+
+		return ref;
 	}
 
 	/** 
-	 * TODO: Implement
-	 * 
 	 * @formatter:off
 	 * Statement -> 
-	 * 		{ Statement* }
-	 * 	|	Type id = Expression;
-	 *	| 	Reference ( = Expression; | '('ArgumentList?')' )
-	 *	|	return Expression?;
-	 *	| 	if '('Expression')' Statement (else Statement)?
-	 *	| 	while '('Expression')' Statement
+	 * 		{ Statement* }										[BlockStmt]
+	 * 	|	Type id = Expression;								[VarDeclStmt]
+	 *	| 	Reference = Expression;								[AssignStmt]
+	 *	|	Reference '(' ArgumentList? ')';					[CallStmt]			
+	 *	|	return Expression?;									[ReturnStmt]
+	 *	| 	if '('Expression')' Statement (else Statement)?		[IfStmt]
+	 *	| 	while '('Expression')' Statement					[WhileStmt]
 	 * @formatter:on
 	 */
 	Statement parseStatement() throws SyntaxError {
-		switch (currentToken.kind) {
-
-		case Token.LCURLY:
+		// Block statement
+		if (currentToken.kind == Token.LCURLY) {
 			acceptIt();
+			StatementList sl = new StatementList();
 			while (startsStatement(currentToken)) {
-				parseStatement();
+				sl.add(parseStatement());
 			}
 			accept(Token.RCURLY);
-			return;
+			return new BlockStmt(sl, null);
+		}
 
-		case Token.INT:
-		case Token.BOOLEAN:
-		case Token.ID:
-		case Token.THIS:
-
-			// Type id = Expression;
-			if (startsType(currentToken)) {
-				Token nextToken = scanner.peek();
-				Token nextNextToken = scanner.peek();
-
-				boolean isBracket = nextToken.kind == Token.LBRACKET;
-				boolean isId = nextToken.kind == Token.ID;
-				boolean isIndex = nextNextToken.kind != Token.RBRACKET;
-
-				// p a = 3; -> Type id = Expression;
-				// p[] a = 3; -> Type id = Expression;
-				// p = 3; -> Reference = Expression;
-				// p[1+2] = 3; -> Reference = Expression;
-				if (isId || (isBracket && !isIndex)) {
-					parseType();
-					accept(Token.ID);
-					accept(Token.BECOMES);
-					parseExpression();
-					accept(Token.SEMICOLON);
-					return;
-				}
-			}
-
-			parseReference();
-
-			// Reference = Expression;
-			if (currentToken.kind == Token.BECOMES) {
-				acceptIt();
-				parseExpression();
-				accept(Token.SEMICOLON);
-				return;
-			}
-
-			// Reference '(' ArgumentList? ')';
-			if (currentToken.kind == Token.LPAREN) {
-				acceptIt();
-				if (startsExpression(currentToken)) {
-					parseArgumentList();
-				}
-				accept(Token.RPAREN);
-				accept(Token.SEMICOLON);
-				return;
-			}
-
-		case Token.RETURN:
+		// If statement
+		else if (currentToken.kind == Token.IF) {
 			acceptIt();
-			if (startsExpression(currentToken)) {
-				parseExpression();
-			}
-			accept(Token.SEMICOLON);
-			return;
 
-		case Token.IF:
-			acceptIt();
 			accept(Token.LPAREN);
-			parseExpression();
+			Expression b = parseExpression();
 			accept(Token.RPAREN);
-			parseStatement();
+
+			Statement t = parseStatement();
 
 			if (currentToken.kind == Token.ELSE) {
 				acceptIt();
-				parseStatement();
+				Statement e = parseStatement();
+				return new IfStmt(b, t, e, null);
 			}
-			return;
-
-		case Token.WHILE:
-			acceptIt();
-			accept(Token.LPAREN);
-			parseExpression();
-			accept(Token.RPAREN);
-			parseStatement();
-			return;
+			return new IfStmt(b, t, null);
 		}
+
+		// Return statement
+		else if (currentToken.kind == Token.RETURN) {
+			acceptIt();
+
+			Expression e = null; // TODO: Check Piazza
+			if (startsExpression(currentToken)) {
+				e = parseExpression();
+			}
+
+			accept(Token.SEMICOLON);
+			return new ReturnStmt(e, null);
+		}
+
+		// While statement
+		else if (currentToken.kind == Token.WHILE) {
+			acceptIt();
+
+			accept(Token.LPAREN);
+			Expression e = parseExpression();
+			accept(Token.RPAREN);
+
+			Statement s = parseStatement();
+			return new WhileStmt(e, s, null);
+		}
+
+		else if (startsType(currentToken) || startsReference(currentToken)) {
+			/* 
+			 * @formatter:off
+			 * 
+			 * T a = 3; 	[VarDeclStmt]
+			 * T[] a = 3; 	[VarDeclStmt]
+			 * R = 3; 		[AssignStmt]
+			 * R[1+2] = 3; 	[AssignStmt]
+			 * R(...);		[CallStmt]
+			 * 
+			 * @formatter:on
+			 */
+
+			Token next = scanner.peek();
+			Token nextNext = scanner.peek();
+
+			// Variable declaration statement
+			if (next.kind == Token.ID || next.kind == Token.LBRACKET && nextNext.kind == Token.RBRACKET) {
+				TypeDenoter t = parseType();
+				String name = currentToken.spelling;
+				accept(Token.ID);
+				VarDecl vd = new VarDecl(t, name, null);
+
+				accept(Token.BECOMES);
+				Expression e = parseExpression();
+				accept(Token.SEMICOLON);
+				return new VarDeclStmt(vd, e, null);
+			}
+
+			Reference r = parseReference();
+
+			// Assign statement
+			if (currentToken.kind == Token.BECOMES) {
+				acceptIt();
+				Expression e = parseExpression();
+				accept(Token.SEMICOLON);
+				return new AssignStmt(r, e, null);
+			}
+
+			// Call statement
+			if (currentToken.kind == Token.LPAREN) {
+				acceptIt();
+				ExprList el = new ExprList();
+				if (startsExpression(currentToken)) {
+					el = parseArgumentList();
+				}
+				accept(Token.RPAREN);
+				accept(Token.SEMICOLON);
+				return new CallStmt(r, el, null);
+			}
+		}
+		throw new SyntaxError();
 	}
 
 	/**
@@ -491,6 +573,10 @@ public class Parser {
 
 	private boolean startsType(Token token) {
 		return token.kind == Token.INT || token.kind == Token.ID || token.kind == Token.BOOLEAN;
+	}
+
+	private boolean startsReference(Token token) {
+		return token.kind == Token.ID || token.kind == Token.THIS;
 	}
 
 }
