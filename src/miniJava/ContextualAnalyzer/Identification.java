@@ -14,6 +14,7 @@ import miniJava.AbstractSyntaxTrees.ClassType;
 import miniJava.AbstractSyntaxTrees.Declaration;
 import miniJava.AbstractSyntaxTrees.Expression;
 import miniJava.AbstractSyntaxTrees.FieldDecl;
+import miniJava.AbstractSyntaxTrees.FieldDeclList;
 import miniJava.AbstractSyntaxTrees.IdRef;
 import miniJava.AbstractSyntaxTrees.Identifier;
 import miniJava.AbstractSyntaxTrees.IfStmt;
@@ -22,24 +23,28 @@ import miniJava.AbstractSyntaxTrees.IxRef;
 import miniJava.AbstractSyntaxTrees.LiteralExpr;
 import miniJava.AbstractSyntaxTrees.MemberDecl;
 import miniJava.AbstractSyntaxTrees.MethodDecl;
+import miniJava.AbstractSyntaxTrees.MethodDeclList;
 import miniJava.AbstractSyntaxTrees.NewArrayExpr;
 import miniJava.AbstractSyntaxTrees.NewObjectExpr;
 import miniJava.AbstractSyntaxTrees.NullLiteral;
 import miniJava.AbstractSyntaxTrees.Operator;
 import miniJava.AbstractSyntaxTrees.Package;
 import miniJava.AbstractSyntaxTrees.ParameterDecl;
+import miniJava.AbstractSyntaxTrees.ParameterDeclList;
 import miniJava.AbstractSyntaxTrees.QualRef;
 import miniJava.AbstractSyntaxTrees.RefExpr;
 import miniJava.AbstractSyntaxTrees.ReturnStmt;
 import miniJava.AbstractSyntaxTrees.Statement;
+import miniJava.AbstractSyntaxTrees.StatementList;
 import miniJava.AbstractSyntaxTrees.ThisRef;
+import miniJava.AbstractSyntaxTrees.TypeKind;
 import miniJava.AbstractSyntaxTrees.UnaryExpr;
 import miniJava.AbstractSyntaxTrees.VarDecl;
 import miniJava.AbstractSyntaxTrees.VarDeclStmt;
 import miniJava.AbstractSyntaxTrees.Visitor;
 import miniJava.AbstractSyntaxTrees.WhileStmt;
+import miniJava.SyntacticAnalyzer.Token;
 
-// TODO: Implement position in parser.
 public class Identification implements Visitor<Object, Object> {
 
 	private ErrorReporter reporter;
@@ -51,6 +56,56 @@ public class Identification implements Visitor<Object, Object> {
 	public Identification(ErrorReporter reporter) {
 		this.reporter = reporter;
 		this.table = new IdentificationTable();
+		buildEnvironment();
+	}
+
+	/////////////////////////////////////////////////////////////////////////////
+	//
+	// ENVIRONMENT
+	//
+	/////////////////////////////////////////////////////////////////////////////
+
+	private void buildEnvironment() {
+		/***
+		 * class String { }
+		 */
+		FieldDeclList StringFDL = new FieldDeclList();
+		MethodDeclList StringMDL = new MethodDeclList();
+		ClassDecl StringDecl = new ClassDecl("String", StringFDL, StringMDL, null);
+		table.enter("String", StringDecl);
+
+		/**
+		 * class _PrintStream { public void println(int n) {}; }
+		 */
+		FieldDeclList _PrintStreamFDL = new FieldDeclList();
+		MethodDeclList _PrintStreamMDL = new MethodDeclList();
+
+		// public void println(int n) {};
+		FieldDecl _PrintStreamPrintlnFD = new FieldDecl(false, false, new BaseType(TypeKind.VOID, null), "println",
+				null);
+		ParameterDeclList _PrintStreamPrintlnPDL = new ParameterDeclList();
+		_PrintStreamPrintlnPDL.add(new ParameterDecl(new BaseType(TypeKind.INT, null), "n", null));
+		StatementList _PrintStreamPrintlnSDL = new StatementList();
+		MethodDecl _PrintStreamPrintlnMD = new MethodDecl(_PrintStreamPrintlnFD, _PrintStreamPrintlnPDL,
+				_PrintStreamPrintlnSDL, null);
+		_PrintStreamMDL.add(_PrintStreamPrintlnMD);
+
+		ClassDecl _PrintStreamDecl = new ClassDecl("_PrintStream", _PrintStreamFDL, _PrintStreamMDL, null);
+		table.enter("_PrintStream", _PrintStreamDecl);
+
+		/**
+		 * class System { public static _PrintStream out; }
+		 */
+		FieldDeclList SystemFDL = new FieldDeclList();
+		MethodDeclList SystemMDL = new MethodDeclList();
+
+		// public static _PrintStream out;
+		ClassType _PrintStreamCT = new ClassType(new Identifier(new Token(Token.CLASS, "_PrintStream", null)), null);
+		FieldDecl SystemOut = new FieldDecl(false, true, _PrintStreamCT, "out", null);
+		SystemFDL.add(SystemOut);
+
+		ClassDecl SystemDecl = new ClassDecl("System", SystemFDL, SystemMDL, null);
+		table.enter("System", SystemDecl);
 	}
 
 	/////////////////////////////////////////////////////////////////////////////
@@ -60,8 +115,6 @@ public class Identification implements Visitor<Object, Object> {
 	/////////////////////////////////////////////////////////////////////////////
 
 	public Object visitPackage(Package prog, Object o) {
-
-		// TODO: Build standard environment at L0
 
 		// Declare program classes at L1
 		table.openScope();
@@ -391,22 +444,18 @@ public class Identification implements Visitor<Object, Object> {
 	}
 
 	public Object visitOperator(Operator op, Object o) {
-
 		return null;
 	}
 
 	public Object visitIntLiteral(IntLiteral num, Object o) {
-
 		return null;
 	}
 
 	public Object visitBooleanLiteral(BooleanLiteral bool, Object o) {
-
 		return null;
 	}
 
 	public Object visitNullLiteral(NullLiteral nul, Object o) {
-
 		return null;
 	}
 }
