@@ -17,7 +17,7 @@ public class Compiler {
 
 	public static void main(String[] args) throws IOException {
 		if (args.length != 1) {
-			System.out.println("Missing argument filename");
+			System.out.println("Missing argument filename.");
 			System.exit(3);
 		}
 
@@ -29,7 +29,7 @@ public class Compiler {
 		SourceFile sourceFile = new SourceFile(sourceName);
 
 		if (!sourceFile.opened) {
-			System.out.println("Source file " + sourceName + " not found.");
+			System.out.println("Failed to open source file " + sourceName + ".");
 			System.exit(3);
 		}
 
@@ -37,7 +37,7 @@ public class Compiler {
 		scanner = new Scanner(sourceFile);
 		parser = new Parser(scanner, reporter);
 
-		ast = parser.parse(); // TODO: parser returns AST
+		ast = parser.parse();
 
 		boolean success = !reporter.hasErrors();
 		if (success) {
@@ -45,13 +45,24 @@ public class Compiler {
 			ASTDisplay display = new ASTDisplay();
 			display.showTree(ast);
 
-			// TODO: Delete following line after implementing AST
-			System.out.println("Valid miniJava program " + sourceName);
+			System.out.println("Compilation successful.");
 			System.exit(0);
 		} else {
-			System.out.println("Invalid miniJava program " + sourceName);
+			System.out.println("Compilation unsuccessful.");
 			System.exit(4);
 		}
 
 	}
+
+	/**
+	 * @formatter:off
+	 * Modifications to AST package:
+	 * NullLiteral (and ASTDisplay)
+	 * Identifier -> Declaration decl
+	 * Reference -> Declaration decl, String spelling
+	 * Terminal -> parameter names
+	 * ClassDecl -> idTable
+	 * 
+	 * @formatter:on
+	 */
 }

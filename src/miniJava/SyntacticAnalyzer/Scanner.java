@@ -118,7 +118,11 @@ public class Scanner {
 			while (isDigit(currentChar)) {
 				takeIt();
 			}
-			return Token.NUM;
+			if (currentSpelling.charAt(0) == '0' && currentSpelling.length() > 1) {
+				return Token.ERROR;
+			} else {
+				return Token.NUM;
+			}
 		}
 
 		switch (currentChar) {

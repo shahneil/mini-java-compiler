@@ -1,7 +1,5 @@
 /**
  * miniJava Abstract Syntax Tree classes
- * @author prins
- * @version COMP 520 (v2.2)
  */
 package miniJava.AbstractSyntaxTrees;
 
@@ -55,4 +53,5 @@ public interface Visitor<ArgType,ResultType> {
     public ResultType visitOperator(Operator op, ArgType arg);
     public ResultType visitIntLiteral(IntLiteral num, ArgType arg);
     public ResultType visitBooleanLiteral(BooleanLiteral bool, ArgType arg);
+    public ResultType visitNullLiteral(NullLiteral nul, ArgType arg);
 }

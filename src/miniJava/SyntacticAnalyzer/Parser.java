@@ -28,6 +28,7 @@ import miniJava.AbstractSyntaxTrees.MethodDecl;
 import miniJava.AbstractSyntaxTrees.MethodDeclList;
 import miniJava.AbstractSyntaxTrees.NewArrayExpr;
 import miniJava.AbstractSyntaxTrees.NewObjectExpr;
+import miniJava.AbstractSyntaxTrees.NullLiteral;
 import miniJava.AbstractSyntaxTrees.Operator;
 import miniJava.AbstractSyntaxTrees.Package;
 import miniJava.AbstractSyntaxTrees.ParameterDecl;
@@ -242,7 +243,7 @@ public class Parser {
 	}
 
 	/**
-	 * Type -> int | boolean | id | (int|id)[]
+	 * Type -> int | boolean | id | null | (int|id)[]
 	 */
 	TypeDenoter parseType() throws SyntaxError {
 		if (currentToken.kind == Token.INT) {
@@ -264,9 +265,12 @@ public class Parser {
 			} else {
 				return new ClassType(cn, null);
 			}
-		} else {
-			accept(Token.BOOLEAN);
+		} else if (currentToken.kind == Token.BOOLEAN) {
+			acceptIt();
 			return new BaseType(TypeKind.BOOLEAN, null);
+		} else {
+			accept(Token.NULL);
+			return new BaseType(TypeKind.NULL, null);
 		}
 	}
 
@@ -275,24 +279,20 @@ public class Parser {
 	 */
 	ParameterDeclList parseParameterList() throws SyntaxError {
 		ParameterDeclList pl = new ParameterDeclList();
-		ParameterDecl p;
-		String name;
-		TypeDenoter t;
-
-		t = parseType();
-		name = currentToken.spelling;
-		accept(Token.ID);
-		p = new ParameterDecl(t, name, null);
+		TypeDenoter t = parseType();
+		String name = currentToken.spelling;
+		ParameterDecl p = new ParameterDecl(t, name, null);
 		pl.add(p);
+		accept(Token.ID);
 
 		while (currentToken.kind == Token.COMMA) {
 			acceptIt();
 			t = parseType();
 			name = currentToken.spelling;
-			accept(Token.ID);
+			p = new ParameterDecl(t, name, null);
 			pl.add(p);
+			accept(Token.ID);
 		}
-
 		return pl;
 	}
 
@@ -396,7 +396,7 @@ public class Parser {
 		else if (currentToken.kind == Token.RETURN) {
 			acceptIt();
 
-			Expression e = null; // TODO: Check Piazza
+			Expression e = null;
 			if (startsExpression(currentToken)) {
 				e = parseExpression();
 			}
@@ -475,102 +475,122 @@ public class Parser {
 	}
 
 	/**
-	 * Expression -> Expression' ((*|/) Expression)*
+	 * Expression -> Expression'
 	 */
 	Expression parseExpression() throws SyntaxError {
-		Expression e1 = parseExpressionP1();
-		while (currentToken.kind == Token.MULT || currentToken.kind == Token.DIV) {
-			Operator o = new Operator(currentToken);
-			acceptIt();
-			Expression e2 = parseExpression();
-			return new BinaryExpr(o, e1, e2, null);
-		}
-		return e1;
+		Expression e = parseExpressionP1();
+		return e;
 	}
 
 	/**
-	 * Expression' -> Expression'' ((+|-) Expression)*
+	 * Expression' -> Expression'' (|| Expression'')*
 	 */
 	Expression parseExpressionP1() throws SyntaxError {
 		Expression e1 = parseExpressionP2();
-		while (currentToken.kind == Token.ADD || currentToken.kind == Token.MINUS) {
+		while (currentToken.kind == Token.OR) {
 			Operator o = new Operator(currentToken);
 			acceptIt();
-			Expression e2 = parseExpression();
-			return new BinaryExpr(o, e1, e2, null);
+			Expression e2 = parseExpressionP2();
+			e1 = new BinaryExpr(o, e1, e2, null);
 		}
 		return e1;
 	}
 
 	/**
-	 * Expression'' -> Expression''' ((<=|<|>|>=) Expression)*
+	 * Expression'' -> Expression'3 (&& Expression'3)*
 	 */
 	Expression parseExpressionP2() throws SyntaxError {
 		Expression e1 = parseExpressionP3();
-		while (currentToken.kind == Token.LTE || currentToken.kind == Token.LT || currentToken.kind == Token.GT
-				|| currentToken.kind == Token.GTE) {
+		while (currentToken.kind == Token.AND) {
 			Operator o = new Operator(currentToken);
 			acceptIt();
-			Expression e2 = parseExpression();
-			return new BinaryExpr(o, e1, e2, null);
+			Expression e2 = parseExpressionP3();
+			e1 = new BinaryExpr(o, e1, e2, null);
 		}
 		return e1;
 	}
 
 	/**
-	 * Expression''' -> Expression'4 ((==|!=) Expression)*
+	 * Expression'3 -> Expression'4 ((==|!=) Expression'4)*
 	 */
 	Expression parseExpressionP3() throws SyntaxError {
 		Expression e1 = parseExpressionP4();
 		while (currentToken.kind == Token.EQ || currentToken.kind == Token.NEQ) {
 			Operator o = new Operator(currentToken);
 			acceptIt();
-			Expression e2 = parseExpression();
-			return new BinaryExpr(o, e1, e2, null);
+			Expression e2 = parseExpressionP4();
+			e1 = new BinaryExpr(o, e1, e2, null);
 		}
 		return e1;
 	}
 
 	/**
-	 * Expression'4 -> Expression'5 (&& Expression)*
+	 * Expression'4 -> Expression'5 ((<=|<|>|>=) Expression'5)*
 	 */
 	Expression parseExpressionP4() throws SyntaxError {
 		Expression e1 = parseExpressionP5();
-		while (currentToken.kind == Token.AND) {
+		while (currentToken.kind == Token.LTE || currentToken.kind == Token.LT || currentToken.kind == Token.GT
+				|| currentToken.kind == Token.GTE) {
 			Operator o = new Operator(currentToken);
 			acceptIt();
-			Expression e2 = parseExpression();
-			return new BinaryExpr(o, e1, e2, null);
+			Expression e2 = parseExpressionP5();
+			e1 = new BinaryExpr(o, e1, e2, null);
 		}
 		return e1;
 	}
 
 	/**
-	 * Expression'5 -> Expression'6 (&& Expression)*
+	 * Expression'5 -> Expression'6 ((+|-) Expression'6)*
 	 */
 	Expression parseExpressionP5() throws SyntaxError {
 		Expression e1 = parseExpressionP6();
-		while (currentToken.kind == Token.OR) {
+		while (currentToken.kind == Token.ADD || currentToken.kind == Token.MINUS) {
 			Operator o = new Operator(currentToken);
 			acceptIt();
-			Expression e2 = parseExpression();
-			return new BinaryExpr(o, e1, e2, null);
+			Expression e2 = parseExpressionP6();
+			e1 = new BinaryExpr(o, e1, e2, null);
 		}
 		return e1;
+	}
+
+	/**
+	 * Expression'6 -> Expression'7 ((*|/) Expression'7)*
+	 */
+	Expression parseExpressionP6() throws SyntaxError {
+		Expression e1 = parseExpressionP7();
+		while (currentToken.kind == Token.MULT || currentToken.kind == Token.DIV) {
+			Operator o = new Operator(currentToken);
+			acceptIt();
+			Expression e2 = parseExpressionP7();
+			e1 = new BinaryExpr(o, e1, e2, null);
+		}
+		return e1;
+	}
+
+	/**
+	 * Expression '7 -> unop* Expression'8 [UnaryExpr]
+	 */
+	Expression parseExpressionP7() throws SyntaxError {
+		while (currentToken.kind == Token.NOT || currentToken.kind == Token.MINUS) {
+			Operator o = new Operator(currentToken);
+			acceptIt();
+			return new UnaryExpr(o, parseExpressionP7(), null);
+		}
+		return parseExpressionP8();
 	}
 
 	/**
 	 * @formatter:off
-	 * Expression'6 ->
-	 * 		Reference							[RefExpr]
-	 * 	|	Reference '(' ArgumentList? ')'		[CallExpr]
-	 * 	| 	unop Expression						[UnaryExpr]
-	 * 	| 	'(' Expression ')'					[Explicit Precedence]
-	 * 	| 	num | true | false					[LiteralExpr]
-	 *  | 	new ( id '(' ')' | int [ Expression ] | id [ Expression ] )
+	 * Expression'8 ->
+	 * 		Reference												[RefExpr]
+	 * 	|	Reference '(' ArgumentList? ')'							[CallExpr]
+	 * 	| 	'(' Expression ')'										[Explicit Precedence]
+	 * 	| 	num | true | false										[LiteralExpr]
+	 *  | 	new id '('')'											[NewObjectExpr]
+	 *  |	new ( int [Expression] | id [Expression] ) 				[NewArrayExpr]
 	 * @formatter:on
 	 */
-	Expression parseExpressionP6() throws SyntaxError {
+	Expression parseExpressionP8() throws SyntaxError {
 
 		// Reference/call expression
 		if (startsReference(currentToken)) {
@@ -590,14 +610,6 @@ public class Parser {
 				return new CallExpr(r, el, null);
 			}
 			return new RefExpr(r, null);
-		}
-
-		// Unary expression
-		else if (currentToken.kind == Token.NOT || currentToken.kind == Token.MINUS) {
-			Operator o = new Operator(currentToken);
-			acceptIt();
-			Expression e = parseExpression();
-			return new UnaryExpr(o, e, null);
 		}
 
 		// Explicit precedence
@@ -622,9 +634,16 @@ public class Parser {
 			return new LiteralExpr(t, null);
 		}
 
+		// Null literal expression
+		else if (currentToken.kind == Token.NULL) {
+			Terminal t = new NullLiteral(currentToken);
+			acceptIt();
+			return new LiteralExpr(t, null);
+		}
+
 		// New expression
-		else {
-			accept(Token.NEW);
+		else if (currentToken.kind == Token.NEW) {
+			acceptIt();
 
 			if (currentToken.kind == Token.ID) {
 				Identifier id = new Identifier(currentToken);
@@ -656,7 +675,18 @@ public class Parser {
 				accept(Token.RBRACKET);
 				return new NewArrayExpr(t, e, null);
 			}
+
+			// Invalid type
+			else {
+				String found = currentToken.spelling;
+				String position = currentToken.position.toString();
+				parseError("Expected valid type but found " + found + " on " + position + ".");
+			}
 		}
+
+		String found = currentToken.spelling;
+		String position = currentToken.position.toString();
+		parseError("Invalid token " + found + " on " + position + ".");
 		throw new SyntaxError();
 	}
 

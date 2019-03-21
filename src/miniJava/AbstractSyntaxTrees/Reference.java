@@ -7,9 +7,11 @@ package miniJava.AbstractSyntaxTrees;
 
 import miniJava.SyntacticAnalyzer.SourcePosition;
 
-public abstract class Reference extends AST
-{
-	public Reference(SourcePosition posn){
+public abstract class Reference extends AST {
+	public Declaration decl;
+	public String spelling;
+
+	public Reference(SourcePosition posn) {
 		super(posn);
 	}
 

@@ -84,7 +84,8 @@ public class Token {
 		
 		// special
 		EOT = 41,
-		ERROR = 42;
+		ERROR = 42,
+		NULL = 43;
 
 	/**
 	 * Returns a map of keyword spellings to token kinds.
@@ -132,7 +133,8 @@ public class Token {
 		"<num>",
 		"<id>",
 		"",
-		"<error>"
+		"<error>",
+		"null"
 	};
 	//@formatter:on
 
