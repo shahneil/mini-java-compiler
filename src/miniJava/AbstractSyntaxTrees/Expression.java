@@ -5,12 +5,14 @@
  */
 package miniJava.AbstractSyntaxTrees;
 
-import  miniJava.SyntacticAnalyzer.SourcePosition;
+import miniJava.SyntacticAnalyzer.SourcePosition;
 
 public abstract class Expression extends AST {
 
-  public Expression(SourcePosition posn) {
-    super (posn);
-  }
-  
+	TypeDenoter type;
+
+	public Expression(SourcePosition posn) {
+		super(posn);
+	}
+
 }

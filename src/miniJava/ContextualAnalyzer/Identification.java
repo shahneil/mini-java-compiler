@@ -72,6 +72,7 @@ public class Identification implements Visitor<Object, Object> {
 		FieldDeclList StringFDL = new FieldDeclList();
 		MethodDeclList StringMDL = new MethodDeclList();
 		ClassDecl StringDecl = new ClassDecl("String", StringFDL, StringMDL, null);
+		StringDecl.type = new BaseType(TypeKind.UNSUPPORTED, null);
 		table.enter("String", StringDecl);
 
 		/**
