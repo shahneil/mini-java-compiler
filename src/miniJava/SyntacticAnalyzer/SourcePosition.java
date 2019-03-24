@@ -14,6 +14,11 @@ public class SourcePosition {
 		col = c;
 	}
 
+	public SourcePosition(SourcePosition p) {
+		line = p.line;
+		col = p.col;
+	}
+
 	public String toString() {
 		return "line " + line + ", col " + col;
 	}
