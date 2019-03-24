@@ -54,12 +54,12 @@ public class Parser {
 	private Scanner scanner;
 	private ErrorReporter reporter;
 	private Token currentToken;
-	private SourcePosition previousTokenPosition;
+	// private SourcePosition previousTokenPosition;
 
 	public Parser(Scanner s, ErrorReporter r) {
 		scanner = s;
 		reporter = r;
-		previousTokenPosition = new SourcePosition();
+		// previousTokenPosition = new SourcePosition();
 	}
 
 	/**
@@ -70,7 +70,7 @@ public class Parser {
 			if (trace) {
 				trace();
 			}
-			previousTokenPosition = currentToken.position;
+			// previousTokenPosition = currentToken.position;
 			currentToken = scanner.scan();
 		} else {
 			String expected = Token.spell(expectedToken);
@@ -111,15 +111,9 @@ public class Parser {
 	/**
 	 * Parse source program.
 	 */
-	public AST parse() {
-		AST ast = null;
+	public AST parse() throws SyntaxError {
 		currentToken = scanner.scan();
-		try {
-			ast = parseProgram();
-		} catch (SyntaxError e) {
-			// Compiler driver will take care of error handling/reporting.
-		}
-		return ast;
+		return parseProgram();
 	}
 
 	/**

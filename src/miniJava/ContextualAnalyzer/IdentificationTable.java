@@ -11,6 +11,7 @@ public class IdentificationTable {
 
 	public IdentificationTable() {
 		table = new Stack<>();
+		openScope();
 	}
 
 	/**
@@ -56,7 +57,7 @@ public class IdentificationTable {
 	public Declaration retrieve(String id) {
 
 		// Iterate through each level, from highest to lowest.
-		for (int level = table.size(); level >= 0; level--) {
+		for (int level = table.size() - 1; level >= 0; level--) {
 			HashMap<String, Declaration> current = table.get(level);
 			if (current.containsKey(id)) {
 				return current.get(id);
@@ -75,9 +76,6 @@ public class IdentificationTable {
 	}
 
 	private int getLevel() {
-		if (!table.isEmpty()) {
-			return table.size() - 1;
-		}
-		return 0;
+		return table.isEmpty() ? 0 : table.size() - 1;
 	}
 }

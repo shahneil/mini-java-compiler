@@ -1,6 +1,8 @@
 package miniJava.ContextualAnalyzer;
 
+import miniJava.CompilationError;
 import miniJava.ErrorReporter;
+import miniJava.AbstractSyntaxTrees.AST;
 import miniJava.AbstractSyntaxTrees.ArrayType;
 import miniJava.AbstractSyntaxTrees.AssignStmt;
 import miniJava.AbstractSyntaxTrees.BaseType;
@@ -56,7 +58,19 @@ public class Identification implements Visitor<Object, Object> {
 	public Identification(ErrorReporter reporter) {
 		this.reporter = reporter;
 		this.table = new IdentificationTable();
+	}
+
+	public void run(AST prog) {
+		// Build environment at L0
+		table.openScope();
 		buildEnvironment();
+		prog.visit(this, null);
+		table.closeScope();
+	}
+
+	private void error(String message) {
+		reporter.reportError("*** " + message);
+		throw new CompilationError();
 	}
 
 	/////////////////////////////////////////////////////////////////////////////
@@ -125,19 +139,19 @@ public class Identification implements Visitor<Object, Object> {
 			// Enter class declaration in scoped identification table
 			boolean unique = table.enter(cd.name, cd);
 			if (!unique)
-				reporter.reportError("Identifier " + cd.name + "already declared at " + cd.position);
+				error("Identifier " + cd.name + " already declared at " + cd.position);
 
 			// Add member declarations in class-specific identification tables
 			for (FieldDecl fd : cd.fieldDeclList) {
 				unique = cd.table.enter(fd.name, fd);
 				if (!unique)
-					reporter.reportError("Identifier " + fd.name + "already declared at " + fd.position);
+					error("Identifier " + fd.name + " already declared at " + fd.position);
 			}
 
 			for (MethodDecl md : cd.methodDeclList) {
 				unique = cd.table.enter(md.name, md);
 				if (!unique)
-					reporter.reportError("Identifier " + md.name + "already declared at " + md.position);
+					error("Identifier " + md.name + " already declared at " + md.position);
 			}
 		}
 
@@ -175,14 +189,14 @@ public class Identification implements Visitor<Object, Object> {
 	public Object visitFieldDecl(FieldDecl fd, Object o) {
 		boolean unique = table.enter(fd.name, fd);
 		if (!unique)
-			reporter.reportError("Identifier " + fd.name + "already declared at " + fd.position);
+			error("Identifier " + fd.name + " already declared at " + fd.position);
 		return null;
 	}
 
 	public Object visitMethodDecl(MethodDecl md, Object o) {
 		boolean unique = table.enter(md.name, md);
 		if (!unique)
-			reporter.reportError("Identifier " + md.name + "already declared at " + md.position);
+			error("Identifier " + md.name + " already declared at " + md.position);
 
 		currentMethod = md;
 
@@ -207,14 +221,14 @@ public class Identification implements Visitor<Object, Object> {
 	public Object visitParameterDecl(ParameterDecl pd, Object o) {
 		boolean unique = table.enter(pd.name, pd);
 		if (!unique)
-			reporter.reportError("Identifier " + pd.name + "already declared at " + pd.position);
+			error("Identifier " + pd.name + " already declared at " + pd.position);
 		return null;
 	}
 
 	public Object visitVarDecl(VarDecl decl, Object o) {
 		boolean unique = table.enter(decl.name, decl);
 		if (!unique)
-			reporter.reportError("Identifier " + decl.name + "already declared at " + decl.position);
+			error("Identifier " + decl.name + " already declared at " + decl.position);
 
 		return null;
 	}
@@ -318,6 +332,26 @@ public class Identification implements Visitor<Object, Object> {
 
 	public Object visitRefExpr(RefExpr expr, Object o) {
 		expr.ref.visit(this, null);
+
+		Declaration d = table.retrieve(expr.ref.spelling);
+
+		// Can't reference classes or method names
+		// Ex: for (...) { System; }
+		if (d instanceof ClassDecl) {
+			error("Invalid reference to class at " + expr.ref.position);
+		} else if (d instanceof MethodDecl) {
+			error("Invalid reference to method at " + expr.ref.position);
+		}
+
+		// If we are inside a static method, we cannot access non-static members of the
+		// current class.
+		if (!(expr.ref instanceof QualRef) && d instanceof FieldDecl) {
+			FieldDecl fd = (FieldDecl) d;
+			if (currentMethod.isStatic && !fd.isStatic) {
+				error("Cannot access non-static member from a static context at " + expr.position);
+			}
+		}
+
 		return null;
 	}
 
@@ -355,7 +389,7 @@ public class Identification implements Visitor<Object, Object> {
 		ref.decl = currentClass;
 		ref.spelling = "this";
 		if (currentMethod.isStatic) {
-			reporter.reportError("*** Cannot use 'this' in a static context at " + ref.position + ".");
+			error("Cannot use 'this' in a static context at " + ref.position + ".");
 		}
 		return null;
 	}
@@ -373,28 +407,26 @@ public class Identification implements Visitor<Object, Object> {
 		// We know d links to the class declaration, but we need the id spelling.
 		// Ex: A.x vs. a.x vs. this.x
 		Declaration d = table.retrieve(ref.ref.spelling);
-		ClassType ct = (ClassType) ref.ref.decl.type;
-		ClassDecl cd = (ClassDecl) table.retrieve(ct.className.spelling);
 
-		if (cd == null) {
-			reporter.reportError("*** Class " + ct.className.spelling + " does not exist at " + ct.position);
+		if (d == null) {
+			error("Class " + ref.ref.spelling + " does not exist at " + ref.ref.position);
 		}
 
+		ClassDecl cd = (ClassDecl) d;
 		MemberDecl md = (MemberDecl) cd.table.retrieve(ref.id.spelling);
 
 		// Prevent qualified references of the form a().b
 		if (d instanceof MethodDecl) {
-			reporter.reportError("*** Invalid usage of method in qualified reference at " + ref.ref.position);
+			error("Invalid usage of method in qualified reference at " + ref.ref.position);
 		}
 
 		// Access and Visibility restrictions
 		if (!md.isStatic && d instanceof ClassDecl) {
-			reporter.reportError(
-					"*** Cannot access non-static member " + md.name + " from a static context at " + ref.id.position);
+			error("Cannot access non-static member " + md.name + " from a static context at " + ref.id.position);
 		}
 
 		if (md.isPrivate && cd != currentClass) {
-			reporter.reportError("*** Cannot access private member " + md.name + " at " + ref.id.position);
+			error("Cannot access private member " + md.name + " at " + ref.id.position);
 		}
 
 		ref.decl = md;
@@ -420,14 +452,13 @@ public class Identification implements Visitor<Object, Object> {
 
 		// Make sure variables aren't referenced in their declarations.
 		if (currentVar != null && currentVar.name.equals(id.spelling)) {
-			reporter.reportError(
-					"*** Cannot reference variable " + id.spelling + " in its declaration at " + id.position);
+			error("Cannot reference variable " + id.spelling + " in its declaration at " + id.position);
 		}
 
 		// Find and attach corresponding declaration
 		Declaration d = table.retrieve(id.spelling);
 		if (d == null) {
-			reporter.reportError("Cannot reference undeclared variable " + id.spelling + " at " + id.position);
+			error("Cannot reference undeclared variable " + id.spelling + " at " + id.position);
 		} else {
 			id.decl = d;
 		}
@@ -436,8 +467,8 @@ public class Identification implements Visitor<Object, Object> {
 		if (d instanceof MemberDecl) {
 			MemberDecl md = (MemberDecl) d;
 			if (currentMethod.isStatic && !md.isStatic) {
-				reporter.reportError("Cannot access non-static method " + md.name + " from static method "
-						+ currentMethod.name + " at " + id.position);
+				error("Cannot access non-static method " + md.name + " from static method " + currentMethod.name
+						+ " at " + id.position);
 			}
 		}
 
