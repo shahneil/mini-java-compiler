@@ -55,6 +55,8 @@ public class IdentificationTable {
 	 *         highest level.
 	 */
 	public Declaration retrieve(String id) {
+		if (id == null)
+			return null;
 
 		// Iterate through each level, from highest to lowest.
 		for (int level = table.size() - 1; level >= 0; level--) {
@@ -65,6 +67,17 @@ public class IdentificationTable {
 		}
 
 		return null;
+	}
+
+	public void remove(String id) {
+
+		// Iterate through each level, from highest to lowest.
+		for (int level = table.size() - 1; level >= 0; level--) {
+			HashMap<String, Declaration> current = table.get(level);
+			if (current.containsKey(id)) {
+				current.remove(id);
+			}
+		}
 	}
 
 	public void openScope() {

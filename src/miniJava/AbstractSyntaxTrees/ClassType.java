@@ -27,7 +27,9 @@ public class ClassType extends TypeDenoter {
 			return false;
 		}
 
-		return this.className.spelling == ((ClassType) t).className.spelling;
+		String t1 = this.className.spelling;
+		String t2 = ((ClassType) t).className.spelling;
+		return t1.equals(t2);
 	}
 
 	public Identifier className;

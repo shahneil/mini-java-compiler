@@ -192,7 +192,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		TypeDenoter declType = stmt.varDecl.type;
 		TypeDenoter exprType = stmt.initExp.visit(this, null);
 		if (!declType.equals(exprType)) {
-			error("Expected " + declType + " but found " + exprType + " at " + stmt.position);
+			error("Expected " + declType.typeKind + " but found " + exprType.typeKind + " at " + stmt.position);
 		}
 
 		return null;
@@ -204,7 +204,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		// Check if types match
 		if (!refType.equals(valType)) {
-			error("Expected " + refType + " but found " + valType + " at " + stmt.position);
+			error("Expected " + refType.typeKind + " but found " + valType.typeKind + " at " + stmt.position);
 		}
 
 		// Can't assign value to 'this'
@@ -223,6 +223,11 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	public TypeDenoter visitCallStmt(CallStmt stmt, Object o) {
 		stmt.methodRef.visit(this, null);
 
+		if (!(stmt.methodRef.decl instanceof MethodDecl)) {
+			error("Invalid call at " + stmt.methodRef.position + ". Only methods can be called.");
+			return null;
+		}
+
 		MethodDecl md = (MethodDecl) stmt.methodRef.decl;
 		ExprList args = stmt.argList;
 		ParameterDeclList params = md.parameterDeclList;
@@ -231,6 +236,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		if (params.size() != args.size()) {
 			error("Expected " + params.size() + " parameters but found " + args.size() + " arguments at "
 					+ stmt.position);
+			return null;
 		}
 
 		// Check if arguments match parameters
@@ -373,6 +379,12 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		// Borrow logic from visitCallStmt
 		TypeDenoter funcType = expr.functionRef.visit(this, null);
+
+		// Can only call methods
+		if (!(expr.functionRef.decl instanceof MethodDecl)) {
+			error("Invalid call at " + expr.functionRef.position + ". Only methods can be called.");
+			return funcType;
+		}
 
 		MethodDecl md = (MethodDecl) expr.functionRef.decl;
 		ExprList args = expr.argList;

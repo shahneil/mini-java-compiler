@@ -62,10 +62,8 @@ public class Identification implements Visitor<Object, Object> {
 
 	public void run(AST prog) {
 		// Build environment at L0
-		table.openScope();
 		buildEnvironment();
 		prog.visit(this, null);
-		table.closeScope();
 	}
 
 	private void error(String message) {
@@ -171,9 +169,25 @@ public class Identification implements Visitor<Object, Object> {
 
 	public Object visitClassDecl(ClassDecl cd, Object o) {
 		currentClass = cd;
+		table.enter("this", currentClass);
 
 		// Enter member declarations at L2
 		table.openScope();
+
+		// Declare all member names before visiting
+		for (FieldDecl fd : cd.fieldDeclList) {
+			boolean unique = table.enter(fd.name, fd);
+			if (!unique)
+				error("Identifier " + fd.name + " already declared at " + fd.position);
+		}
+
+		for (MethodDecl md : cd.methodDeclList) {
+			boolean unique = table.enter(md.name, md);
+			if (!unique)
+				error("Identifier " + md.name + " already declared at " + md.position);
+		}
+
+		// Visit members
 		for (FieldDecl fd : cd.fieldDeclList) {
 			fd.visit(this, null);
 		}
@@ -181,23 +195,18 @@ public class Identification implements Visitor<Object, Object> {
 		for (MethodDecl md : cd.methodDeclList) {
 			md.visit(this, null);
 		}
+
 		table.closeScope();
 		currentClass = null;
+		table.remove("this");
 		return null;
 	}
 
 	public Object visitFieldDecl(FieldDecl fd, Object o) {
-		boolean unique = table.enter(fd.name, fd);
-		if (!unique)
-			error("Identifier " + fd.name + " already declared at " + fd.position);
 		return null;
 	}
 
 	public Object visitMethodDecl(MethodDecl md, Object o) {
-		boolean unique = table.enter(md.name, md);
-		if (!unique)
-			error("Identifier " + md.name + " already declared at " + md.position);
-
 		currentMethod = md;
 
 		// Add parameter names at L3
@@ -222,6 +231,7 @@ public class Identification implements Visitor<Object, Object> {
 		boolean unique = table.enter(pd.name, pd);
 		if (!unique)
 			error("Identifier " + pd.name + " already declared at " + pd.position);
+		pd.type.visit(this, null);
 		return null;
 	}
 
@@ -229,6 +239,7 @@ public class Identification implements Visitor<Object, Object> {
 		boolean unique = table.enter(decl.name, decl);
 		if (!unique)
 			error("Identifier " + decl.name + " already declared at " + decl.position);
+		decl.type.visit(this, null);
 
 		return null;
 	}
@@ -401,36 +412,46 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
-	public Object visitQRef(QualRef ref, Object o) {
+	public Object visitQRef(QualRef ref, Object o) { // TODO: Fix
 		ref.ref.visit(this, null);
 
-		// We know d links to the class declaration, but we need the id spelling.
-		// Ex: A.x vs. a.x vs. this.x
-		Declaration d = table.retrieve(ref.ref.spelling);
+		Declaration d = ref.ref.decl;
+		ClassDecl cd = null;
 
-		if (d == null) {
-			error("Class " + ref.ref.spelling + " does not exist at " + ref.ref.position);
+		// Classes
+		if (d instanceof ClassDecl) {
+			cd = (ClassDecl) d;
 		}
 
-		ClassDecl cd = (ClassDecl) d;
-		MemberDecl md = (MemberDecl) cd.table.retrieve(ref.id.spelling);
-
-		// Prevent qualified references of the form a().b
-		if (d instanceof MethodDecl) {
+		// Methods
+		else if (d instanceof MethodDecl) {
 			error("Invalid usage of method in qualified reference at " + ref.ref.position);
 		}
 
+		// Fields, Variables, Parameters
+		else {
+			ClassType ct = (ClassType) d.type;
+			String cn = ct.className.spelling;
+			cd = (ClassDecl) table.retrieve(cn);
+		}
+
+		MemberDecl md = (MemberDecl) cd.table.retrieve(ref.id.spelling);
+
+		if (md == null) {
+			error("Class " + cd.name + " does not contain member " + ref.id.spelling + " at " + ref.position);
+		}
+
 		// Access and Visibility restrictions
-		if (!md.isStatic && d instanceof ClassDecl) {
-			error("Cannot access non-static member " + md.name + " from a static context at " + ref.id.position);
+		if (!md.isStatic && currentMethod.isStatic && cd == currentClass) {
+			error("Cannot access non-static member " + md.name + " from a static context at " + ref.position);
 		}
 
 		if (md.isPrivate && cd != currentClass) {
-			error("Cannot access private member " + md.name + " at " + ref.id.position);
+			error("Cannot access private member " + md.name + " at " + ref.position);
 		}
 
 		ref.decl = md;
-		ref.id.decl = ref.decl;
+		ref.id.decl = md;
 		ref.spelling = ref.id.spelling;
 		return null;
 	}
