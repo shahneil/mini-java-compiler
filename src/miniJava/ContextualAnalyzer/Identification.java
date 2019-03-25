@@ -204,11 +204,13 @@ public class Identification implements Visitor<Object, Object> {
 	}
 
 	public Object visitFieldDecl(FieldDecl fd, Object o) {
+		fd.type.visit(this, null);
 		return null;
 	}
 
 	public Object visitMethodDecl(MethodDecl md, Object o) {
 		currentMethod = md;
+		md.type.visit(this, null);
 
 		// Add parameter names at L3
 		table.openScope();
