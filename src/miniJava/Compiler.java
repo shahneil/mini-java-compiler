@@ -3,7 +3,6 @@ package miniJava;
 import java.io.IOException;
 
 import miniJava.AbstractSyntaxTrees.AST;
-import miniJava.AbstractSyntaxTrees.ASTDisplay;
 import miniJava.ContextualAnalyzer.TypeChecking;
 import miniJava.SyntacticAnalyzer.Parser;
 import miniJava.SyntacticAnalyzer.Scanner;
@@ -60,8 +59,8 @@ public class Compiler {
 			System.out.println("Compilation unsuccessful.");
 			System.exit(4);
 		} else {
-			ASTDisplay display = new ASTDisplay();
-			display.showTree(ast);
+			// ASTDisplay display = new ASTDisplay();
+			// display.showTree(ast);
 			System.out.println("Compilation successful.");
 			System.exit(0);
 		}

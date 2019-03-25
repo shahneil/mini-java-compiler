@@ -41,6 +41,7 @@ import miniJava.AbstractSyntaxTrees.VarDecl;
 import miniJava.AbstractSyntaxTrees.VarDeclStmt;
 import miniJava.AbstractSyntaxTrees.Visitor;
 import miniJava.AbstractSyntaxTrees.WhileStmt;
+import miniJava.SyntacticAnalyzer.SourcePosition;
 
 public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	private ErrorReporter reporter;
@@ -56,8 +57,8 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		prog.visit(this, null);
 	}
 
-	private void error(String message) {
-		reporter.reportError("*** " + message);
+	private void error(String message, SourcePosition position) {
+		reporter.reportError("*** line " + position.line + ": " + message);
 	}
 
 	/////////////////////////////////////////////////////////////////////////////
@@ -70,7 +71,6 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		for (ClassDecl c : prog.classDeclList) {
 			c.visit(this, null);
 		}
-
 		return null;
 	}
 
@@ -114,13 +114,13 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 				// Void methods shouldn't contain return statements
 				if (isVoid && returnType != null) {
-					error("Unexpected return statement in void method " + md.name + " at " + md.position);
+					error("Unexpected return statement in void method " + md.name + ".", s.position);
 				}
 
 				// Check that return type matches
 				if (!isVoid && returnType != null) {
 					if (!md.type.equals(returnType)) {
-						error("Expected " + md.type + " but found " + returnType);
+						error("Expected " + md.type + " but found " + returnType, s.position);
 					}
 				}
 			}
@@ -128,7 +128,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		// Methods that aren't void should contain return statements
 		if (!isVoid && !containsReturnStmt) {
-			error("Method " + md.name + " must contain a return statement.");
+			error("Method " + md.name + " missing return statement.", md.position);
 		}
 
 		return null;
@@ -137,7 +137,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	public TypeDenoter visitParameterDecl(ParameterDecl pd, Object o) {
 		pd.type.visit(this, null);
 		if (pd.type.typeKind == TypeKind.VOID) {
-			error("Parameter " + pd.name + " at " + pd.position + " cannot be void.");
+			error("Parameter " + pd.name + " cannot be void.", pd.position);
 		}
 
 		return null;
@@ -146,7 +146,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	public TypeDenoter visitVarDecl(VarDecl decl, Object o) {
 		decl.type.visit(this, null);
 		if (decl.type.typeKind == TypeKind.VOID) {
-			error("Variable " + decl.name + " at " + decl.position + " cannot be void.");
+			error("Variable " + decl.name + " cannot be void.", decl.position);
 		}
 
 		return null;
@@ -192,7 +192,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		TypeDenoter declType = stmt.varDecl.type;
 		TypeDenoter exprType = stmt.initExp.visit(this, null);
 		if (!declType.equals(exprType)) {
-			error("Expected " + declType.typeKind + " but found " + exprType.typeKind + " at " + stmt.position);
+			error("Expected " + declType.typeKind + " but found " + exprType.typeKind + ".", stmt.position);
 		}
 
 		return null;
@@ -204,17 +204,17 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		// Check if types match
 		if (!refType.equals(valType)) {
-			error("Expected " + refType.typeKind + " but found " + valType.typeKind + " at " + stmt.position);
+			error("Expected " + refType.typeKind + " but found " + valType.typeKind + ".", stmt.position);
 		}
 
 		// Can't assign value to 'this'
 		if (stmt.ref instanceof ThisRef) {
-			error("Cannot use 'this' keyword in assignment statement.");
+			error("Cannot use 'this' keyword in assignment statement.", stmt.position);
 		}
 
 		// Can't assign value to method
 		if (stmt.ref.decl instanceof MethodDecl) {
-			error("Cannot assign value to method at " + stmt.position);
+			error("Cannot assign value to method.", stmt.position);
 		}
 
 		return null;
@@ -224,7 +224,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		stmt.methodRef.visit(this, null);
 
 		if (!(stmt.methodRef.decl instanceof MethodDecl)) {
-			error("Invalid call at " + stmt.methodRef.position + ". Only methods can be called.");
+			error("Can only call methods.", stmt.methodRef.position);
 			return null;
 		}
 
@@ -234,8 +234,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		// Check if argument list and parameter list are of same size
 		if (params.size() != args.size()) {
-			error("Expected " + params.size() + " parameters but found " + args.size() + " arguments at "
-					+ stmt.position);
+			error("Expected " + params.size() + " parameters but found " + args.size() + " arguments.", stmt.position);
 			return null;
 		}
 
@@ -249,7 +248,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 			if (!argType.equals(paramType)) {
 				error("Expected parameter " + param.name + " of type " + paramType + " but found argument of type "
-						+ argType);
+						+ argType, param.position);
 			}
 		}
 
@@ -266,22 +265,22 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		// Check that condition evaluates to boolean
 		TypeDenoter condType = stmt.cond.visit(this, null);
 		if (condType.typeKind != TypeKind.BOOLEAN) {
-			error("Expected condition to be boolean but found " + condType.typeKind + " at " + condType.position);
+			error("Expected condition to be boolean but found " + condType.typeKind + ".", condType.position);
 		}
 
 		// Variable declarations shouldn't be the only statements in branches of
 		// conditional statements
 		if (stmt.thenStmt instanceof VarDeclStmt) {
-			error("A variable declaration cannot be the only statement in a branch of a conditional statement at "
-					+ stmt.thenStmt.position);
+			error("A variable declaration cannot be the only statement in a branch of a conditional statement.",
+					stmt.thenStmt.position);
 		}
 		stmt.thenStmt.visit(this, null);
 
 		// If there's an else statement, check the same as above
 		if (stmt.elseStmt != null) {
 			if (stmt.elseStmt instanceof VarDeclStmt) {
-				error("A variable declaration cannot be the only statement in a branch of a conditional statement at "
-						+ stmt.elseStmt.position);
+				error("A variable declaration cannot be the only statement in a branch of a conditional statement.",
+						stmt.elseStmt.position);
 			}
 			stmt.elseStmt.visit(this, null);
 		}
@@ -294,14 +293,14 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		// Check that condition evaluates to boolean
 		TypeDenoter condType = stmt.cond.visit(this, null);
 		if (condType.typeKind != TypeKind.BOOLEAN) {
-			error("Expected condition to be boolean but found " + condType.typeKind + " at " + condType.position);
+			error("Expected condition to be boolean but found " + condType.typeKind + ".", condType.position);
 		}
 
 		// Variable declarations shouldn't be the only statements in branches of
 		// conditional statements
 		if (stmt.body instanceof VarDeclStmt) {
-			error("A variable declaration cannot be the only statement in a branch of a conditional statement at "
-					+ stmt.body.position);
+			error("A variable declaration cannot be the only statement in a branch of a conditional statement.",
+					stmt.body.position);
 		}
 		stmt.body.visit(this, null);
 
@@ -321,7 +320,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		TypeDenoter opType = expr.operator.visit(this, null);
 
 		if (!exprType.equals(opType)) {
-			error("Invalid operator type " + opType + " for expression type " + exprType + " at " + expr.position);
+			error("Invalid operator type " + opType + " for expression type " + exprType + ".", expr.position);
 		}
 
 		return opType;
@@ -338,8 +337,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		case "==":
 		case "!=":
 			if (!leftType.equals(rightType)) {
-				error("Left operand type " + leftType.typeKind + " does not match right operand type "
-						+ rightType.typeKind + " at " + expr.position);
+				error("Operand types do not match.", expr.position);
 			}
 			break;
 
@@ -347,23 +345,21 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		case "&&":
 		case "||":
 			if (leftType.typeKind != TypeKind.BOOLEAN) {
-				error("Expected left operand to be boolean but found " + leftType.typeKind + " at "
-						+ expr.left.position);
+				error("Expected left operand to be boolean but found " + leftType.typeKind + ".", expr.left.position);
 			}
 			if (rightType.typeKind != TypeKind.BOOLEAN) {
-				error("Expected right operand to be boolean but found " + rightType.typeKind + " at "
-						+ expr.right.position);
+				error("Expected right operand to be boolean but found " + rightType.typeKind + ".",
+						expr.right.position);
 			}
 			break;
 
 		// Operands must evaluate to ints
 		default:
 			if (leftType.typeKind != TypeKind.INT) {
-				error("Expected left operand to be int but found " + leftType.typeKind + " at " + expr.left.position);
+				error("Expected left operand to be int but found " + leftType.typeKind + ".", expr.left.position);
 			}
 			if (rightType.typeKind != TypeKind.INT) {
-				error("Expected right operand to be int but found " + rightType.typeKind + " at "
-						+ expr.right.position);
+				error("Expected right operand to be int but found " + rightType.typeKind + ".", expr.right.position);
 			}
 		}
 
@@ -382,7 +378,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		// Can only call methods
 		if (!(expr.functionRef.decl instanceof MethodDecl)) {
-			error("Invalid call at " + expr.functionRef.position + ". Only methods can be called.");
+			error("Can only call methods.", expr.functionRef.position);
 			return funcType;
 		}
 
@@ -392,8 +388,8 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		// Check if argument list and parameter list are of same size
 		if (params.size() != args.size()) {
-			error("Expected " + params.size() + " parameters but received " + args.size() + " arguments at "
-					+ expr.position);
+			error("Expected " + params.size() + " parameters but received " + args.size() + " arguments.",
+					expr.position);
 			return funcType;
 		}
 
@@ -407,7 +403,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 			if (!argType.equals(paramType)) {
 				error("Expected parameter " + param.name + " of type " + paramType.typeKind
-						+ " but received argument of type " + argType.typeKind);
+						+ " but received argument of type " + argType.typeKind, param.position);
 			}
 		}
 
@@ -427,14 +423,14 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		// NewArrayExpr -> new ( int [Expression] | id [Expression] )
 		if (eltType.typeKind != TypeKind.INT && eltType.typeKind != TypeKind.CLASS) {
-			reporter.reportError("Invalid array type " + eltType.typeKind + " at " + expr.position);
+			error("Invalid array type " + eltType.typeKind + ".", expr.position);
 		}
 
 		// Array size must be an int
 		TypeDenoter sizeType = expr.sizeExpr.visit(this, null);
 		if (sizeType.typeKind != TypeKind.INT) {
-			error("Expected array size to be of type int but received " + sizeType.typeKind + " at "
-					+ expr.sizeExpr.position);
+			error("Expected array size to be of type int but received " + sizeType.typeKind + ".",
+					expr.sizeExpr.position);
 		}
 
 		return new ArrayType(eltType, expr.position);
@@ -463,13 +459,13 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		// Check that the reference points to an array type
 		if (refType.typeKind != TypeKind.ARRAY) {
-			error("Invalid indexed reference to non-array type " + refType.typeKind + " at " + ref.ref.position);
+			error("Invalid indexed reference to non-array type " + refType.typeKind + ".", ref.ref.position);
 		}
 
 		// Array index must be an integer
 		TypeDenoter indexType = ref.indexExpr.visit(this, null);
 		if (indexType.typeKind != TypeKind.INT) {
-			error("Expected int but found " + indexType.typeKind + " at " + ref.indexExpr.position);
+			error("Expected int but found " + indexType.typeKind + ".", ref.indexExpr.position);
 		}
 
 		// Check that element type is either class or int
