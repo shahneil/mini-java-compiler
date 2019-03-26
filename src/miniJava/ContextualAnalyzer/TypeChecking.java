@@ -109,18 +109,28 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 			s.visit(this, null);
 
 			if (s instanceof ReturnStmt) {
-				containsReturnStmt = true;
-				TypeDenoter returnType = ((ReturnStmt) s).returnExpr.visit(this, null);
+
+				ReturnStmt rs = (ReturnStmt) s;
 
 				// Void methods shouldn't contain return statements
-				if (isVoid && returnType != null) {
-					error("Unexpected return statement in void method " + md.name + ".", s.position);
+				if (isVoid && rs.returnExpr != null) {
+					error("Unexpected return expression in void method " + md.name + ".", rs.returnExpr.position);
 				}
 
-				// Check that return type matches
-				if (!isVoid && returnType != null) {
-					if (!md.type.equals(returnType)) {
-						error("Expected " + md.type + " but found " + returnType, s.position);
+				// Non-void methods should not have empty return statements
+				else if (!isVoid && rs.returnExpr == null) {
+					error("Method " + md.name + " missing return expression.", md.position);
+				}
+
+				else {
+					containsReturnStmt = true;
+					TypeDenoter returnType = ((ReturnStmt) s).returnExpr.visit(this, null);
+
+					// Check that return type matches
+					if (!isVoid && returnType != null) {
+						if (!md.type.equals(returnType)) {
+							error("Expected " + md.type + " but found " + returnType, s.position);
+						}
 					}
 				}
 			}
