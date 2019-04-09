@@ -146,6 +146,8 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 	public TypeDenoter visitParameterDecl(ParameterDecl pd, Object o) {
 		pd.type.visit(this, null);
+
+		// Check for void parameters
 		if (pd.type.typeKind == TypeKind.VOID) {
 			error("Parameter " + pd.name + " cannot be void.", pd.position);
 		}
@@ -201,6 +203,12 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 
 		TypeDenoter declType = stmt.varDecl.type;
 		TypeDenoter exprType = stmt.initExp.visit(this, null);
+
+		// null can be assigned to any object
+		if (exprType.typeKind == TypeKind.NULL) {
+			return null;
+		}
+
 		if (!declType.equals(exprType)) {
 			error("Expected " + declType.typeKind + " but found " + exprType.typeKind + ".", stmt.position);
 		}
@@ -212,11 +220,6 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		TypeDenoter refType = stmt.ref.visit(this, null);
 		TypeDenoter valType = stmt.val.visit(this, null);
 
-		// Check if types match
-		if (!refType.equals(valType)) {
-			error("Expected " + refType.typeKind + " but found " + valType.typeKind + ".", stmt.position);
-		}
-
 		// Can't assign value to 'this'
 		if (stmt.ref instanceof ThisRef) {
 			error("Cannot use 'this' keyword in assignment statement.", stmt.position);
@@ -225,6 +228,16 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		// Can't assign value to method
 		if (stmt.ref.decl instanceof MethodDecl) {
 			error("Cannot assign value to method.", stmt.position);
+		}
+
+		// null can be assigned to any object
+		if (valType.typeKind == TypeKind.NULL) {
+			return null;
+		}
+
+		// Check if types match
+		if (!refType.equals(valType)) {
+			error("Expected " + refType.typeKind + " but found " + valType.typeKind + ".", stmt.position);
 		}
 
 		return null;
@@ -257,8 +270,8 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 			TypeDenoter paramType = param.type;
 
 			if (!argType.equals(paramType)) {
-				error("Expected parameter " + param.name + " of type " + paramType + " but found argument of type "
-						+ argType, param.position);
+				error("Expected parameter " + param.name + " of type " + paramType.typeKind
+						+ " but found argument of type " + argType.typeKind, arg.position);
 			}
 		}
 
@@ -266,7 +279,10 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	}
 
 	public TypeDenoter visitReturnStmt(ReturnStmt stmt, Object o) {
-		stmt.returnExpr.visit(this, null);
+		// Return statements may not contain return expressions
+		if (stmt.returnExpr != null) {
+			stmt.returnExpr.visit(this, null);
+		}
 		return null;
 	}
 
@@ -346,6 +362,9 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		// Operands must be of same type (but can be of any type)
 		case "==":
 		case "!=":
+			if (leftType.typeKind == TypeKind.NULL || rightType.typeKind == TypeKind.NULL) {
+				break;
+			}
 			if (!leftType.equals(rightType)) {
 				error("Operand types do not match.", expr.position);
 			}
@@ -378,7 +397,8 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	}
 
 	public TypeDenoter visitRefExpr(RefExpr expr, Object o) {
-		return expr.ref.visit(this, null);
+		expr.type = expr.ref.visit(this, null);
+		return expr.type;
 	}
 
 	public TypeDenoter visitCallExpr(CallExpr expr, Object o) {
@@ -421,7 +441,8 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	}
 
 	public TypeDenoter visitLiteralExpr(LiteralExpr expr, Object o) {
-		return expr.lit.visit(this, null);
+		expr.type = expr.lit.visit(this, null);
+		return expr.type;
 	}
 
 	public TypeDenoter visitNewObjectExpr(NewObjectExpr expr, Object o) {
@@ -467,9 +488,10 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	public TypeDenoter visitIxRef(IxRef ref, Object o) {
 		TypeDenoter refType = ref.ref.visit(this, null);
 
-		// Check that the reference points to an array type
+		// Reference must point to an array type
 		if (refType.typeKind != TypeKind.ARRAY) {
 			error("Invalid indexed reference to non-array type " + refType.typeKind + ".", ref.ref.position);
+			return new BaseType(TypeKind.ERROR, ref.position);
 		}
 
 		// Array index must be an integer
@@ -478,11 +500,17 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 			error("Expected int but found " + indexType.typeKind + ".", ref.indexExpr.position);
 		}
 
+		// Check that reference points to an initialized array
+		if (ref.decl == null) {
+			// error("Invalid reference to uninitialized array", ref.position);
+			return new BaseType(TypeKind.NULL, ref.position);
+		}
+
 		// Check that element type is either class or int
 		switch (((ArrayType) refType).eltType.typeKind) {
 
 		case CLASS:
-			return ref.decl.type;
+			return ((ArrayType) ref.decl.type).eltType;
 
 		case INT:
 			return new BaseType(TypeKind.INT, ref.position);

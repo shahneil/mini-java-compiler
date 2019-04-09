@@ -147,6 +147,7 @@ public class Parser {
 		SourcePosition p = getPosition();
 		accept(Token.CLASS);
 		String cn = currentToken.spelling;
+		Identifier cid = new Identifier(currentToken);
 		accept(Token.ID);
 		accept(Token.LCURLY);
 
@@ -163,7 +164,9 @@ public class Parser {
 		}
 		accept(Token.RCURLY);
 
-		return new ClassDecl(cn, fdl, mdl, p);
+		ClassDecl cd = new ClassDecl(cn, fdl, mdl, p);
+		cd.type = new ClassType(cid, p);
+		return cd;
 	}
 
 	/**
