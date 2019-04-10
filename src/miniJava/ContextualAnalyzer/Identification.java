@@ -1,6 +1,5 @@
 package miniJava.ContextualAnalyzer;
 
-import miniJava.CompilationError;
 import miniJava.ErrorReporter;
 import miniJava.AbstractSyntaxTrees.AST;
 import miniJava.AbstractSyntaxTrees.ArrayType;
@@ -70,7 +69,7 @@ public class Identification implements Visitor<Object, Object> {
 
 	private void error(String message, SourcePosition position) {
 		reporter.reportError("*** line " + position.line + ": " + message);
-		throw new CompilationError();
+		throw new Error();
 	}
 
 	/////////////////////////////////////////////////////////////////////////////
