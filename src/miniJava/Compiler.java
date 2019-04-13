@@ -3,6 +3,7 @@ package miniJava;
 import java.io.IOException;
 
 import miniJava.AbstractSyntaxTrees.AST;
+import miniJava.CodeGenerator.CodeGenerator;
 import miniJava.ContextualAnalyzer.TypeChecking;
 import miniJava.SyntacticAnalyzer.Parser;
 import miniJava.SyntacticAnalyzer.Scanner;
@@ -13,6 +14,7 @@ public class Compiler {
 	private static Scanner scanner;
 	private static Parser parser;
 	private static TypeChecking checker;
+	private static CodeGenerator generator;
 	private static ErrorReporter reporter;
 	private static AST ast;
 
@@ -38,6 +40,7 @@ public class Compiler {
 		scanner = new Scanner(sourceFile);
 		parser = new Parser(scanner, reporter);
 		checker = new TypeChecking(reporter);
+		generator = new CodeGenerator(reporter);
 
 		try {
 
@@ -51,6 +54,11 @@ public class Compiler {
 			checker.check(ast);
 			System.out.println("Contextual analysis completed.");
 
+			// Code generation
+			System.out.println("Code generation...");
+			generator.generate(sourceName, ast);
+			System.out.println("Code generation completed.");
+
 		} catch (Error e) {
 		}
 
@@ -59,22 +67,8 @@ public class Compiler {
 			System.out.println("Compilation unsuccessful.");
 			System.exit(4);
 		} else {
-			// ASTDisplay display = new ASTDisplay();
-			// display.showTree(ast);
 			System.out.println("Compilation successful.");
 			System.exit(0);
 		}
 	}
-
-	/**
-	 * @formatter:off
-	 * Modifications to AST package:
-	 * NullLiteral (and ASTDisplay)
-	 * Identifier -> Declaration decl
-	 * Reference -> Declaration decl, String spelling
-	 * Terminal -> parameter names
-	 * ClassDecl -> idTable
-	 * 
-	 * @formatter:on
-	 */
 }
