@@ -40,7 +40,7 @@ public class Compiler {
 		scanner = new Scanner(sourceFile);
 		parser = new Parser(scanner, reporter);
 		checker = new TypeChecking(reporter);
-		generator = new CodeGenerator(reporter);
+		generator = new CodeGenerator(sourceName, reporter);
 
 		try {
 
@@ -56,7 +56,7 @@ public class Compiler {
 
 			// Code generation
 			System.out.println("Code generation...");
-			generator.generate(sourceName, ast);
+			generator.generate(ast);
 			System.out.println("Code generation completed.");
 
 		} catch (Error e) {

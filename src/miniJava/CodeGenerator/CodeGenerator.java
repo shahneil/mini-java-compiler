@@ -1,5 +1,7 @@
 package miniJava.CodeGenerator;
 
+import mJAM.Disassembler;
+import mJAM.Interpreter;
 import mJAM.Machine;
 import mJAM.Machine.Op;
 import mJAM.Machine.Reg;
@@ -45,6 +47,10 @@ import miniJava.AbstractSyntaxTrees.WhileStmt;
 public class CodeGenerator implements Visitor<Integer, Integer> {
 
 	private ErrorReporter reporter;
+	private String objectCodeFileName;
+	private String asmCodeFileName;
+	private boolean debug = true; // TODO: Turn off after development
+
 	private int mainAddr;
 	private int frameOffset;
 
@@ -52,23 +58,48 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 	// TODO: Add length field for arrays
 	// TODO: Check return statements (see PA4 description)
 
-	public CodeGenerator(ErrorReporter reporter) {
+	public CodeGenerator(String sourceName, ErrorReporter reporter) {
 		this.reporter = reporter;
+		objectCodeFileName = sourceName.substring(0, sourceName.indexOf('.')) + ".mJAM";
+		asmCodeFileName = objectCodeFileName.replace(".mJAM", ".asm");
 	}
 
-	public void generate(String sourceName, AST prog) {
+	public void generate(AST prog) {
 		Machine.initCodeGen();
 		prog.visit(this, null);
+		generateObjectCode();
+		generateAssembly();
+		if (debug) {
+			runDebugger();
+		}
+	}
 
-		// Write code to Object file
-		String objectCodeFileName = sourceName.substring(0, sourceName.indexOf('.')) + ".mJAM";
+	private void generateObjectCode() {
 		ObjectFile objectFile = new ObjectFile(objectCodeFileName);
 		System.out.println("Generating object code file " + objectCodeFileName + "...");
+
 		if (objectFile.write()) {
-			System.out.println("Generated object code file " + objectCodeFileName + "...");
-		} else {
 			error("Failed to generate object code file.");
+		} else {
+			System.out.println("Generated object code file " + objectCodeFileName + "...");
 		}
+	}
+
+	private void generateAssembly() {
+		System.out.println("Generating assembly file " + asmCodeFileName + "...");
+		Disassembler d = new Disassembler(objectCodeFileName);
+
+		if (d.disassemble()) {
+			error("Failed to generate assembly file.");
+		} else {
+			System.out.println("Generated assembly file " + asmCodeFileName + "...");
+		}
+	}
+
+	private void runDebugger() {
+		System.out.println("Running code in debugger...");
+		Interpreter.debug(objectCodeFileName, asmCodeFileName);
+		System.out.println("Finished running code.");
 	}
 
 	private void error(String message) {
@@ -167,7 +198,9 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 		}
 
 		// Statements
-		frameOffset = 3; // 2 words reserved by frame (LB and RA)
+		// Reserve space for dynamic link (LB) and return address (RB)
+		// Static link is unused
+		frameOffset = 3;
 		for (Statement s : md.statementList) {
 			s.visit(this, null);
 		}
@@ -219,11 +252,29 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 
 	public Integer visitBlockStmt(BlockStmt stmt, Integer arg) {
 
+		// Count variables
+		int numVars = 0;
+		for (Statement s : stmt.sl) {
+			if (s instanceof VarDeclStmt) {
+				numVars++;
+			}
+			s.visit(this, null);
+		}
+
+		// Pop variables
+		Machine.emit(Op.POP, 0, 0, numVars);
+
+		// Reset frame offset
+		// TODO: May have to change based on later code
+		frameOffset -= numVars;
+
 		return null;
 	}
 
 	public Integer visitVardeclStmt(VarDeclStmt stmt, Integer arg) {
-
+		stmt.varDecl.visit(this, null);
+		stmt.initExp.visit(this, null); // TODO: May have to change argument based on expression code.
+		frameOffset++;
 		return null;
 	}
 
