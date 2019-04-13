@@ -4,6 +4,7 @@ import mJAM.Disassembler;
 import mJAM.Interpreter;
 import mJAM.Machine;
 import mJAM.Machine.Op;
+import mJAM.Machine.Prim;
 import mJAM.Machine.Reg;
 import mJAM.ObjectFile;
 import miniJava.ErrorReporter;
@@ -18,6 +19,8 @@ import miniJava.AbstractSyntaxTrees.CallExpr;
 import miniJava.AbstractSyntaxTrees.CallStmt;
 import miniJava.AbstractSyntaxTrees.ClassDecl;
 import miniJava.AbstractSyntaxTrees.ClassType;
+import miniJava.AbstractSyntaxTrees.Declaration;
+import miniJava.AbstractSyntaxTrees.Expression;
 import miniJava.AbstractSyntaxTrees.FieldDecl;
 import miniJava.AbstractSyntaxTrees.IdRef;
 import miniJava.AbstractSyntaxTrees.Identifier;
@@ -34,6 +37,7 @@ import miniJava.AbstractSyntaxTrees.Package;
 import miniJava.AbstractSyntaxTrees.ParameterDecl;
 import miniJava.AbstractSyntaxTrees.QualRef;
 import miniJava.AbstractSyntaxTrees.RefExpr;
+import miniJava.AbstractSyntaxTrees.Reference;
 import miniJava.AbstractSyntaxTrees.ReturnStmt;
 import miniJava.AbstractSyntaxTrees.Statement;
 import miniJava.AbstractSyntaxTrees.ThisRef;
@@ -57,6 +61,7 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 	// TODO: Patch list for methods
 	// TODO: Add length field for arrays
 	// TODO: Check return statements (see PA4 description)
+	// TODO: Create an enum for expression paths (using 1 and 2 right now).
 
 	public CodeGenerator(String sourceName, ErrorReporter reporter) {
 		this.reporter = reporter;
@@ -273,32 +278,188 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 
 	public Integer visitVardeclStmt(VarDeclStmt stmt, Integer arg) {
 		stmt.varDecl.visit(this, null);
-		stmt.initExp.visit(this, null); // TODO: May have to change argument based on expression code.
+		stmt.initExp.visit(this, 1);
 		frameOffset++;
 		return null;
 	}
 
 	public Integer visitAssignStmt(AssignStmt stmt, Integer arg) {
+		Reference r = stmt.ref;
+		Expression v = stmt.val;
+		Declaration d = r.decl;
+		int offset;
+
+		// IdRef
+		if (r instanceof IdRef) {
+			// Get location of attached declaration
+			offset = r.visit(this, 2);
+
+			// Evaluate expression and push result onto stack
+			v.visit(this, 1);
+
+			if (d instanceof FieldDecl) {
+				FieldDecl fd = (FieldDecl) d;
+
+				// Update static field in global segment
+				if (fd.isStatic) {
+					Machine.emit(Op.STORE, Reg.SB, offset);
+				}
+
+				// Update current object instance in heap
+				else {
+					Machine.emit(Op.STORE, Reg.OB, offset);
+				}
+			} else {
+				// Update local variable/parameter
+				Machine.emit(Op.STORE, Reg.LB, offset);
+			}
+		}
+
+		// IxRef
+		else if (r instanceof IxRef) {
+			// Push address of array object (a) and element index (i) onto stack
+			r.visit(this, 2);
+
+			// Push new value (v) onto stack
+			v.visit(this, 1);
+
+			// Update according to stack operands.
+			// a[i] = v;
+			Machine.emit(Prim.arrayupd);
+		}
+
+		// QualRef
+		else if (r instanceof QualRef) {
+
+			// Update static field
+			if (d instanceof FieldDecl && ((FieldDecl) d).isStatic) {
+				// Find location of field, evaluate expression and push result onto stack
+				offset = r.visit(this, 2);
+				v.visit(this, 1);
+
+				// Update static field in global segment
+				Machine.emit(Op.STORE, Reg.SB, offset);
+			}
+
+			// Update object instance
+			else {
+				// Push address of object (a) and field index (i)
+				r.visit(this, 2);
+
+				// Push new value (v)
+				v.visit(this, 1);
+
+				// Update according to stack operands.
+				// a.i = v;
+				Machine.emit(Prim.fieldupd);
+			}
+		}
 
 		return null;
 	}
 
 	public Integer visitCallStmt(CallStmt stmt, Integer arg) {
+		Reference r = stmt.methodRef;
+		MethodDecl md = (MethodDecl) stmt.methodRef.decl;
+
+		// Load arguments onto stack
+		for (Expression a : stmt.argList) {
+			a.visit(this, 1);
+		}
+
+		// Println
+		if (r instanceof QualRef && md.name.equals("println")) {
+			Machine.emit(Prim.putintnl);
+		}
+
+		// IdRef
+		// Ex: a()
+		else if (r instanceof IdRef) {
+
+			// Static method
+			if (md.isStatic) {
+				// TODO: Patch
+				Machine.emit(Op.CALL, Reg.CB, -1);
+			}
+
+			// Instance method
+			else {
+				// Push address of current object instance (this) onto stack
+				Machine.emit(Op.LOAD, Reg.OB, 0);
+				// TODO: Patch
+				Machine.emit(Op.CALLI, Reg.CB, -1);
+			}
+		}
+
+		// QualRef
+		// Ex: a.b()
+		else {
+			// Push address of object instance onto stack
+			// For a.b() -> get location of a (handle in visitQRef)
+			// For a.b.c() -> get location of b (handle in visitQRef)
+			r.visit(this, 1);
+			// TODO: Patch
+			Machine.emit(Op.CALLI, Reg.CB, -1);
+		}
+
+		// If method is not void, pop the unused return value
+		if (md.type.typeKind != TypeKind.VOID) {
+			Machine.emit(Op.POP, 0, 0, 1);
+		}
 
 		return null;
 	}
 
 	public Integer visitReturnStmt(ReturnStmt stmt, Integer arg) {
-
+		// If the return statement isn't empty,
+		// evaluate the return expression and push the result onto the stack
+		if (stmt.returnExpr != null) {
+			stmt.returnExpr.visit(this, 1);
+		}
 		return null;
 	}
 
 	public Integer visitIfStmt(IfStmt stmt, Integer arg) {
 
+		// Condition
+		stmt.cond.visit(this, 1); // Evaluate condition and push result onto stack
+		int condAddr = Machine.nextInstrAddr();
+		Machine.emit(Op.JUMPIF, 0, Reg.CB, -1); // Jump to else (patch) if false
+
+		// Then
+		stmt.thenStmt.visit(this, null); // Execute then statement
+		int thenAddr = Machine.nextInstrAddr();
+		Machine.emit(Op.JUMP, Reg.CB, -1); // Jump to end (patch)
+
+		// Else
+		int elseAddr = Machine.nextInstrAddr();
+		Machine.patch(condAddr, elseAddr); // Patch address of else clause
+		if (stmt.elseStmt != null) {
+			stmt.elseStmt.visit(this, null);
+		}
+
+		// End
+		int endAddr = Machine.nextInstrAddr();
+		Machine.patch(thenAddr, endAddr); // Patch address of end
+
 		return null;
 	}
 
 	public Integer visitWhileStmt(WhileStmt stmt, Integer arg) {
+
+		// Condition
+		int condAddr = Machine.nextInstrAddr();
+		stmt.cond.visit(this, 1); // Evaluate condition and push result onto stack
+		int bodyAddr = Machine.nextInstrAddr();
+		Machine.emit(Op.JUMPIF, 0, Reg.CB, -1); // Jump to end (patch) if false
+
+		// Body
+		stmt.body.visit(this, null);
+		Machine.emit(Op.JUMP, Reg.CB, condAddr); // Jump to condition
+
+		// End
+		int endAddr = Machine.nextInstrAddr();
+		Machine.patch(bodyAddr, endAddr); // Patch address of end
 
 		return null;
 	}
