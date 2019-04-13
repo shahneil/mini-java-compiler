@@ -33,17 +33,20 @@ import miniJava.AbstractSyntaxTrees.ParameterDecl;
 import miniJava.AbstractSyntaxTrees.QualRef;
 import miniJava.AbstractSyntaxTrees.RefExpr;
 import miniJava.AbstractSyntaxTrees.ReturnStmt;
+import miniJava.AbstractSyntaxTrees.Statement;
 import miniJava.AbstractSyntaxTrees.ThisRef;
+import miniJava.AbstractSyntaxTrees.TypeKind;
 import miniJava.AbstractSyntaxTrees.UnaryExpr;
 import miniJava.AbstractSyntaxTrees.VarDecl;
 import miniJava.AbstractSyntaxTrees.VarDeclStmt;
 import miniJava.AbstractSyntaxTrees.Visitor;
 import miniJava.AbstractSyntaxTrees.WhileStmt;
 
-public class CodeGenerator implements Visitor<Object, Object> {
+public class CodeGenerator implements Visitor<Integer, Integer> {
 
 	private ErrorReporter reporter;
-	private int patchAddr_Call_main;
+	private int mainAddr;
+	private int frameOffset;
 
 	// TODO: Patch list for methods
 	// TODO: Add length field for arrays
@@ -57,7 +60,7 @@ public class CodeGenerator implements Visitor<Object, Object> {
 		Machine.initCodeGen();
 		prog.visit(this, null);
 
-		// Write code to object file
+		// Write code to Object file
 		String objectCodeFileName = sourceName.substring(0, sourceName.indexOf('.')) + ".mJAM";
 		ObjectFile objectFile = new ObjectFile(objectCodeFileName);
 		System.out.println("Generating object code file " + objectCodeFileName + "...");
@@ -79,7 +82,7 @@ public class CodeGenerator implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
-	public Object visitPackage(Package prog, Object arg) {
+	public Integer visitPackage(Package prog, Integer arg) {
 
 		// Load static variables
 		int offset = 0;
@@ -94,13 +97,22 @@ public class CodeGenerator implements Visitor<Object, Object> {
 		}
 
 		// Record address where main is called
-		patchAddr_Call_main = Machine.nextInstrAddr();
+		mainAddr = Machine.nextInstrAddr();
 
 		// Call main (patch)
 		Machine.emit(Op.CALL, Reg.CB, -1);
 
 		// End execution
 		Machine.emit(Op.HALT, 0, 0, 0);
+
+		// Decorate fields
+		offset = 0;
+		for (ClassDecl cd : prog.classDeclList) {
+			for (FieldDecl fd : cd.fieldDeclList) {
+				fd.visit(this, offset);
+				offset++;
+			}
+		}
 
 		// Visit classes
 		for (ClassDecl cd : prog.classDeclList) {
@@ -116,28 +128,68 @@ public class CodeGenerator implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
-	public Object visitClassDecl(ClassDecl cd, Object arg) {
+	public Integer visitClassDecl(ClassDecl cd, Integer arg) {
+
+		// Visit methods
+		for (MethodDecl md : cd.methodDeclList) {
+			md.visit(this, null);
+		}
 
 		return null;
 	}
 
-	public Object visitFieldDecl(FieldDecl fd, Object arg) {
+	public Integer visitFieldDecl(FieldDecl fd, Integer offset) {
+
+		// Decorate non-static fields
+		if (!fd.isStatic) {
+			fd.entity = new KnownAddress(Machine.characterSize, offset);
+		}
 
 		return null;
 	}
 
-	public Object visitMethodDecl(MethodDecl md, Object arg) {
+	public Integer visitMethodDecl(MethodDecl md, Integer arg) {
+
+		// Method code address
+		md.entity = new KnownAddress(Machine.addressSize, Machine.nextInstrAddr());
+
+		// Patch address of main()
+		if (md.name.equals("main")) {
+			Machine.patch(mainAddr, Machine.nextInstrAddr());
+		}
+
+		// Decorate parameters
+		int numParams = md.parameterDeclList.size();
+		int paramOffset = -1 * numParams;
+		for (ParameterDecl pd : md.parameterDeclList) {
+			pd.visit(this, paramOffset);
+			paramOffset++;
+		}
+
+		// Statements
+		frameOffset = 3; // 2 words reserved by frame (LB and RA)
+		for (Statement s : md.statementList) {
+			s.visit(this, null);
+		}
+
+		// If the method is void, pop parameters.
+		// Else, pop result and parameters, then push result back onto the stack.
+		if (md.type.typeKind == TypeKind.VOID) {
+			Machine.emit(Op.RETURN, 0, 0, numParams);
+		} else {
+			Machine.emit(Op.RETURN, 1, 0, numParams);
+		}
 
 		return null;
 	}
 
-	public Object visitParameterDecl(ParameterDecl pd, Object arg) {
-
+	public Integer visitParameterDecl(ParameterDecl pd, Integer offset) {
+		pd.entity = new KnownAddress(Machine.addressSize, offset);
 		return null;
 	}
 
-	public Object visitVarDecl(VarDecl decl, Object arg) {
-
+	public Integer visitVarDecl(VarDecl decl, Integer arg) {
+		decl.entity = new KnownAddress(Machine.characterSize, frameOffset);
 		return null;
 	}
 
@@ -147,18 +199,15 @@ public class CodeGenerator implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
-	public Object visitBaseType(BaseType type, Object arg) {
-
+	public Integer visitBaseType(BaseType type, Integer arg) {
 		return null;
 	}
 
-	public Object visitClassType(ClassType type, Object arg) {
-
+	public Integer visitClassType(ClassType type, Integer arg) {
 		return null;
 	}
 
-	public Object visitArrayType(ArrayType type, Object arg) {
-
+	public Integer visitArrayType(ArrayType type, Integer arg) {
 		return null;
 	}
 
@@ -168,37 +217,37 @@ public class CodeGenerator implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
-	public Object visitBlockStmt(BlockStmt stmt, Object arg) {
+	public Integer visitBlockStmt(BlockStmt stmt, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitVardeclStmt(VarDeclStmt stmt, Object arg) {
+	public Integer visitVardeclStmt(VarDeclStmt stmt, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitAssignStmt(AssignStmt stmt, Object arg) {
+	public Integer visitAssignStmt(AssignStmt stmt, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitCallStmt(CallStmt stmt, Object arg) {
+	public Integer visitCallStmt(CallStmt stmt, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitReturnStmt(ReturnStmt stmt, Object arg) {
+	public Integer visitReturnStmt(ReturnStmt stmt, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitIfStmt(IfStmt stmt, Object arg) {
+	public Integer visitIfStmt(IfStmt stmt, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitWhileStmt(WhileStmt stmt, Object arg) {
+	public Integer visitWhileStmt(WhileStmt stmt, Integer arg) {
 
 		return null;
 	}
@@ -209,37 +258,37 @@ public class CodeGenerator implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
-	public Object visitUnaryExpr(UnaryExpr expr, Object arg) {
+	public Integer visitUnaryExpr(UnaryExpr expr, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitBinaryExpr(BinaryExpr expr, Object arg) {
+	public Integer visitBinaryExpr(BinaryExpr expr, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitRefExpr(RefExpr expr, Object arg) {
+	public Integer visitRefExpr(RefExpr expr, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitCallExpr(CallExpr expr, Object arg) {
+	public Integer visitCallExpr(CallExpr expr, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitLiteralExpr(LiteralExpr expr, Object arg) {
+	public Integer visitLiteralExpr(LiteralExpr expr, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitNewObjectExpr(NewObjectExpr expr, Object arg) {
+	public Integer visitNewObjectExpr(NewObjectExpr expr, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitNewArrayExpr(NewArrayExpr expr, Object arg) {
+	public Integer visitNewArrayExpr(NewArrayExpr expr, Integer arg) {
 
 		return null;
 	}
@@ -250,22 +299,22 @@ public class CodeGenerator implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
-	public Object visitThisRef(ThisRef ref, Object arg) {
+	public Integer visitThisRef(ThisRef ref, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitIdRef(IdRef ref, Object arg) {
+	public Integer visitIdRef(IdRef ref, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitQRef(QualRef ref, Object arg) {
+	public Integer visitQRef(QualRef ref, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitIxRef(IxRef ref, Object arg) {
+	public Integer visitIxRef(IxRef ref, Integer arg) {
 
 		return null;
 	}
@@ -276,27 +325,27 @@ public class CodeGenerator implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
-	public Object visitIdentifier(Identifier id, Object arg) {
+	public Integer visitIdentifier(Identifier id, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitOperator(Operator op, Object arg) {
+	public Integer visitOperator(Operator op, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitIntLiteral(IntLiteral num, Object arg) {
+	public Integer visitIntLiteral(IntLiteral num, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitBooleanLiteral(BooleanLiteral bool, Object arg) {
+	public Integer visitBooleanLiteral(BooleanLiteral bool, Integer arg) {
 
 		return null;
 	}
 
-	public Object visitNullLiteral(NullLiteral nul, Object arg) {
+	public Integer visitNullLiteral(NullLiteral nul, Integer arg) {
 
 		return null;
 	}
