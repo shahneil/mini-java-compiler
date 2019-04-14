@@ -472,6 +472,18 @@ public class Identification implements Visitor<Object, Object> {
 
 		// Arrays
 		// Can't refer to member of IxRef (ex: d[].x)
+		else if (d.type instanceof ArrayType) {
+			if (!ref.id.spelling.equals("length")) {
+				error("Reference " + ref.ref.spelling + " of type " + d.type.typeKind + " does not have public member "
+						+ ref.id.spelling + ".", ref.ref.position);
+			}
+
+			ref.decl = new FieldDecl(false, false, new BaseType(TypeKind.INT, ref.id.position), null, null);
+			ref.id.decl = ref.decl;
+			ref.spelling = ref.id.spelling;
+			return null;
+		}
+
 		else if (!(d.type instanceof ClassType)) {
 			error("Reference " + ref.ref.spelling + " of type " + d.type.typeKind + " does not have public member "
 					+ ref.id.spelling + ".", ref.ref.position);
@@ -544,8 +556,15 @@ public class Identification implements Visitor<Object, Object> {
 			error("Cannot use variable " + id.spelling + " in its own declaration.", id.position);
 		}
 
+		// Check for array length
+		if (id.spelling.equals("length")) {
+			id.decl = new FieldDecl(false, false, new BaseType(TypeKind.INT, id.position), null, null);
+			return null;
+		}
+
 		// Find and attach corresponding declaration
 		Declaration d = table.retrieve(id.spelling);
+
 		if (d == null) {
 			error("Cannot reference undeclared variable " + id.spelling + ".", id.position);
 		}

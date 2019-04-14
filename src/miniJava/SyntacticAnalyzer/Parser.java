@@ -54,12 +54,10 @@ public class Parser {
 	private Scanner scanner;
 	private ErrorReporter reporter;
 	private Token currentToken;
-	private SourcePosition previousTokenPosition;
 
 	public Parser(Scanner s, ErrorReporter r) {
 		scanner = s;
 		reporter = r;
-		previousTokenPosition = new SourcePosition();
 	}
 
 	/**
@@ -70,7 +68,6 @@ public class Parser {
 			if (trace) {
 				trace();
 			}
-			previousTokenPosition = currentToken.position;
 			currentToken = scanner.scan();
 		} else {
 			String expected = Token.spell(expectedToken);
