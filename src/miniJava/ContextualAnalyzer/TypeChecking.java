@@ -33,6 +33,7 @@ import miniJava.AbstractSyntaxTrees.QualRef;
 import miniJava.AbstractSyntaxTrees.RefExpr;
 import miniJava.AbstractSyntaxTrees.ReturnStmt;
 import miniJava.AbstractSyntaxTrees.Statement;
+import miniJava.AbstractSyntaxTrees.StatementList;
 import miniJava.AbstractSyntaxTrees.ThisRef;
 import miniJava.AbstractSyntaxTrees.TypeDenoter;
 import miniJava.AbstractSyntaxTrees.TypeKind;
@@ -97,22 +98,34 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	}
 
 	public TypeDenoter visitMethodDecl(MethodDecl md, Object o) {
+		StatementList sl = md.statementList;
 		boolean isVoid = md.type.typeKind == TypeKind.VOID;
-		boolean containsReturnStmt = false;
+		boolean returnsValue = false;
 
 		// Check for void parameters
 		for (ParameterDecl pd : md.parameterDeclList) {
 			pd.visit(this, null);
 		}
 
-		for (Statement s : md.statementList) {
+		// Check that last statement in non-void method is a return statement
+		Statement lastStmt = sl.get(sl.size() - 1);
+		if (!isVoid && !(lastStmt instanceof ReturnStmt)) {
+			error("Last statement in non-void method " + md.name + " must be a return statement.", lastStmt.position);
+		}
+
+		// Add empty return statement to void methods whose last statement isn't a
+		// return statement
+		else if (isVoid && !(lastStmt instanceof ReturnStmt)) {
+			sl.add(new ReturnStmt(null, lastStmt.position));
+		}
+
+		for (Statement s : sl) {
 			s.visit(this, null);
 
 			if (s instanceof ReturnStmt) {
-
 				ReturnStmt rs = (ReturnStmt) s;
 
-				// Void methods shouldn't contain return statements
+				// Void methods shouldn't return values
 				if (isVoid && rs.returnExpr != null) {
 					error("Unexpected return expression in void method " + md.name + ".", rs.returnExpr.position);
 				}
@@ -122,8 +135,8 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 					error("Method " + md.name + " missing return expression.", md.position);
 				}
 
-				else {
-					containsReturnStmt = true;
+				else if (rs.returnExpr != null) {
+					returnsValue = true;
 					TypeDenoter returnType = ((ReturnStmt) s).returnExpr.visit(this, null);
 
 					// Check that return type matches
@@ -136,8 +149,8 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 			}
 		}
 
-		// Methods that aren't void should contain return statements
-		if (!isVoid && !containsReturnStmt) {
+		// Non-void methods should contain at least one non-empty return statement
+		if (!isVoid && !returnsValue) {
 			error("Method " + md.name + " missing return statement.", md.position);
 		}
 

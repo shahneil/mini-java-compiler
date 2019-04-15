@@ -69,19 +69,18 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 	private ErrorReporter reporter;
 	private String objectCodeFileName;
 	private String asmCodeFileName;
-	private boolean debug = true; // TODO: Turn off after development
+	private boolean debug = false;
 
+	private boolean foundMain;
 	private PatchList patchList;
 	private int mainAddr;
 	private int frameOffset;
-
-	// TODO: Check return statements (see PA4 description)
-	// TODO: Correct arguments/spelling for main
 
 	public CodeGenerator(String sourceName, ErrorReporter reporter) {
 		this.reporter = reporter;
 		this.frameOffset = 0;
 		this.patchList = new PatchList();
+		this.foundMain = false;
 		objectCodeFileName = sourceName.substring(0, sourceName.indexOf('.')) + ".mJAM";
 		asmCodeFileName = objectCodeFileName.replace(".mJAM", ".asm");
 	}
@@ -184,9 +183,9 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 			cd.visit(this, null);
 		}
 
-		// TODO: Check for public static void main method with correct String []
-		// parameter.
-		// If there isn't a main method, throw error
+		if (!foundMain) {
+			error("A miniJava program must contain a public static void main method.");
+		}
 
 		return null;
 	}
@@ -227,6 +226,18 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 
 		// Check for main method (doesn't check arguments/visibility/access)
 		if (md.name.equals("main")) {
+
+			// Check for duplicate main method
+			if (foundMain) {
+				error("A miniJava program can only contain one main method.");
+			}
+
+			// Check for public, static, void, and one array type arg
+			if (!md.isPrivate && md.isStatic && md.type.typeKind == TypeKind.VOID && md.parameterDeclList.size() == 1
+					&& md.parameterDeclList.get(0).type instanceof ArrayType) {
+				foundMain = true;
+			}
+
 			Machine.patch(mainAddr, Machine.nextInstrAddr());
 		}
 
