@@ -131,7 +131,7 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 	}
 
 	private void error(String message) {
-		reporter.reportError(message);
+		reporter.reportError("*** " + message);
 		throw new Error();
 	}
 
