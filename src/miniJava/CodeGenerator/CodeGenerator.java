@@ -56,6 +56,7 @@ import miniJava.AbstractSyntaxTrees.Reference;
 import miniJava.AbstractSyntaxTrees.ReturnStmt;
 import miniJava.AbstractSyntaxTrees.Statement;
 import miniJava.AbstractSyntaxTrees.ThisRef;
+import miniJava.AbstractSyntaxTrees.TypeDenoter;
 import miniJava.AbstractSyntaxTrees.TypeKind;
 import miniJava.AbstractSyntaxTrees.UnaryExpr;
 import miniJava.AbstractSyntaxTrees.VarDecl;
@@ -224,7 +225,7 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 		// Method code address
 		md.entity = new KnownAddress(Machine.addressSize, Machine.nextInstrAddr());
 
-		// Check for main method (doesn't check arguments/visibility/access)
+		// Check for main method
 		if (md.name.equals("main")) {
 
 			// Check for duplicate main method
@@ -232,10 +233,23 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 				error("A miniJava program can only contain one main method.");
 			}
 
-			// Check for public, static, void, and one array type arg
-			if (!md.isPrivate && md.isStatic && md.type.typeKind == TypeKind.VOID && md.parameterDeclList.size() == 1
-					&& md.parameterDeclList.get(0).type instanceof ArrayType) {
-				foundMain = true;
+			// Check for public, static, void
+			if (!md.isPrivate && md.isStatic && md.type.typeKind == TypeKind.VOID && md.parameterDeclList.size() == 1) {
+
+				// Check that args is an array type
+				TypeDenoter argType = md.parameterDeclList.get(0).type;
+				if (argType instanceof ArrayType) {
+					TypeDenoter eltType = ((ArrayType) argType).eltType;
+
+					// Check if element type is class type, and if so, check if the class spelling
+					// is "String"
+					if (eltType instanceof ClassType) {
+						String className = ((ClassType) eltType).className.spelling;
+						if (className.equals("String")) {
+							foundMain = true;
+						}
+					}
+				}
 			}
 
 			Machine.patch(mainAddr, Machine.nextInstrAddr());
@@ -423,13 +437,23 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 		}
 
 		// Println
+		// If it ends up not being the "real" System.out.println, continue.
 		if (r instanceof QualRef && md.name.equals("println")) {
-			Machine.emit(Prim.putintnl);
+			Reference outRef = ((QualRef) r).ref;
+
+			if (outRef instanceof QualRef && outRef.spelling.equals("out")) {
+				Reference sysRef = ((QualRef) outRef).ref;
+
+				if (sysRef.spelling.equals("System") && sysRef.decl instanceof ClassDecl) {
+					Machine.emit(Prim.putintnl);
+					return null;
+				}
+			}
 		}
 
 		// IdRef
 		// Ex: a()
-		else if (r instanceof IdRef) {
+		if (r instanceof IdRef) {
 
 			// Static method
 			if (md.isStatic) {
@@ -454,7 +478,12 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 			// For a.b.c() -> get location of b (handle in visitQRef)
 			r.visit(this, 1);
 			patchList.add(Machine.nextInstrAddr(), md);
-			Machine.emit(CALLI, CB, -1);
+
+			if (md.isStatic) {
+				Machine.emit(CALL, CB, -1);
+			} else {
+				Machine.emit(CALLI, CB, -1);
+			}
 		}
 
 		// If method is not void, pop the unused return value
@@ -678,7 +707,15 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 
 		// Println
 		if (r instanceof QualRef && md.name.equals("println")) {
-			Machine.emit(Prim.putintnl);
+			Reference outRef = ((QualRef) r).ref;
+
+			if (outRef instanceof QualRef && outRef.spelling.equals("out")) {
+				Reference sysRef = ((QualRef) outRef).ref;
+
+				if (sysRef.spelling.equals("System") && sysRef.decl instanceof ClassDecl) {
+					Machine.emit(Prim.putintnl);
+				}
+			}
 		}
 
 		// IdRef
@@ -702,11 +739,15 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 
 		// QualRef
 		// Ex: a.b()
-		else {
-			// Push address of object instance onto stack
+		else if (r instanceof QualRef) {
 			r.visit(this, 1);
 			patchList.add(Machine.nextInstrAddr(), md);
-			Machine.emit(CALLI, CB, -1);
+
+			if (md.isStatic) {
+				Machine.emit(CALL, CB, -1);
+			} else {
+				Machine.emit(CALLI, CB, -1);
+			}
 		}
 
 		return null;
@@ -789,7 +830,8 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 	@Override
 	public Integer visitIdRef(IdRef ref, Integer arg) {
 		Declaration d = ref.decl;
-		int offset = ((KnownAddress) d.entity).offset;
+		KnownAddress addr = (KnownAddress) d.entity;
+		int offset = addr.offset;
 
 		// Load address
 		if (arg == 1) {
@@ -860,8 +902,14 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 			// Ex: a.b()
 			else if (isMethod) {
 
+				if (((MethodDecl) d).isStatic) {
+					return null;
+				}
+
 				// Load address of object instance
-				ref.ref.visit(this, 1);
+				else {
+					ref.ref.visit(this, 1);
+				}
 			}
 
 			else {

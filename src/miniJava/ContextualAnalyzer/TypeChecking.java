@@ -107,16 +107,18 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 			pd.visit(this, null);
 		}
 
-		// Check that last statement in non-void method is a return statement
-		Statement lastStmt = sl.get(sl.size() - 1);
-		if (!isVoid && !(lastStmt instanceof ReturnStmt)) {
-			error("Last statement in non-void method " + md.name + " must be a return statement.", lastStmt.position);
+		Statement lastStmt = sl.size() > 0 ? sl.get(sl.size() - 1) : null;
+
+		// For empty void methods, insert an empty return statement.
+		if (isVoid && lastStmt == null) {
+			lastStmt = new ReturnStmt(null, null);
 		}
 
 		// Add empty return statement to void methods whose last statement isn't a
 		// return statement
-		else if (isVoid && !(lastStmt instanceof ReturnStmt)) {
-			sl.add(new ReturnStmt(null, lastStmt.position));
+		if (isVoid && !(lastStmt instanceof ReturnStmt)) {
+			sl.add(new ReturnStmt(null, null));
+			lastStmt = sl.get(sl.size() - 1);
 		}
 
 		for (Statement s : sl) {
@@ -153,6 +155,8 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		if (!isVoid && !returnsValue) {
 			error("Method " + md.name + " missing return statement.", md.position);
 		}
+
+		// Check that last statement in non-void method is a return statement
 
 		return null;
 	}

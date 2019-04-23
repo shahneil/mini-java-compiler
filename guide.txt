@@ -1,0 +1,27 @@
+MiniJava Compiler Guide
+========================
+
+Scope
+======
+[Scope of your project. Please make clear any optional parts of the project you have
+implemented, if any. List known limitations of your implementation (it is better for you
+to identify these than for me to find them).]
+
+
+AST Changes
+===========
+[Summary of changes to AST classes. Summarize the changes you made to the
+AbstractSyntaxTree classes that were distributed. Describe changes, if any, made to
+the AST class structure as well as additions made to the classes to support contextual
+analysis and code generation.]
+
+
+Tests
+======
+[A description of tests (if tests are supplied). This should describe any tests in the Tests
+directory (see below). If you are not able to run PA4Test.java you should include
+some test(s) that exercise the portion of the compiler that is working. If you have
+completed optional extensions of the project, you should include some comprehensive
+tests for each extension. You can follow the passxxx, failxxx convention we have
+been using for tests that should demonstrate correct behavior from your compiler and
+those that should be rejected by your compiler.]
