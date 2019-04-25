@@ -37,6 +37,7 @@ import miniJava.AbstractSyntaxTrees.ClassType;
 import miniJava.AbstractSyntaxTrees.Declaration;
 import miniJava.AbstractSyntaxTrees.Expression;
 import miniJava.AbstractSyntaxTrees.FieldDecl;
+import miniJava.AbstractSyntaxTrees.ForStmt;
 import miniJava.AbstractSyntaxTrees.IdRef;
 import miniJava.AbstractSyntaxTrees.Identifier;
 import miniJava.AbstractSyntaxTrees.IfStmt;
@@ -547,6 +548,42 @@ public class CodeGenerator implements Visitor<Integer, Integer> {
 		// End
 		int endAddr = Machine.nextInstrAddr();
 		Machine.patch(bodyAddr, endAddr); // Patch address of end
+
+		return null;
+	}
+
+	@Override
+	public Integer visitForStmt(ForStmt stmt, Integer arg) {
+
+		// Initialization
+		if (stmt.init != null) {
+			stmt.init.visit(this, null);
+		}
+
+		// Condition
+		int condAddr = Machine.nextInstrAddr();
+		int jumpAddr = 0; // temp
+		if (stmt.cond != null) {
+			stmt.cond.visit(this, 1); // Evaluate condition and push result onto stack
+			jumpAddr = Machine.nextInstrAddr();
+			Machine.emit(JUMPIF, 0, CB, -1); // Jump to end (patch) if false
+		}
+
+		// Body
+		stmt.body.visit(this, null);
+
+		// Update
+		if (stmt.update != null)
+			stmt.update.visit(this, null);
+
+		// Next iteration
+		Machine.emit(JUMP, CB, condAddr);
+
+		// End
+		int endAddr = Machine.nextInstrAddr();
+		if (stmt.cond != null) {
+			Machine.patch(jumpAddr, endAddr);
+		}
 
 		return null;
 	}

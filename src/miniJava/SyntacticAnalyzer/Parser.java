@@ -17,6 +17,7 @@ import miniJava.AbstractSyntaxTrees.ExprList;
 import miniJava.AbstractSyntaxTrees.Expression;
 import miniJava.AbstractSyntaxTrees.FieldDecl;
 import miniJava.AbstractSyntaxTrees.FieldDeclList;
+import miniJava.AbstractSyntaxTrees.ForStmt;
 import miniJava.AbstractSyntaxTrees.IdRef;
 import miniJava.AbstractSyntaxTrees.Identifier;
 import miniJava.AbstractSyntaxTrees.IfStmt;
@@ -54,6 +55,8 @@ public class Parser {
 	private Scanner scanner;
 	private ErrorReporter reporter;
 	private Token currentToken;
+	private boolean ignoringToken = false;
+	private int ignoredToken = 0;
 
 	public Parser(Scanner s, ErrorReporter r) {
 		scanner = s;
@@ -69,6 +72,10 @@ public class Parser {
 				trace();
 			}
 			currentToken = scanner.scan();
+		} else if (ignoringToken && expectedToken == ignoredToken) {
+			if (trace) {
+				trace();
+			}
 		} else {
 			String expected = Token.spell(expectedToken);
 			String found = currentToken.spelling;
@@ -82,6 +89,16 @@ public class Parser {
 	 */
 	private void acceptIt() {
 		accept(currentToken.kind);
+	}
+
+	private void ignoreToken(int kind) {
+		ignoringToken = true;
+		ignoredToken = kind;
+	}
+
+	private void stopIgnoringToken() {
+		ignoringToken = false;
+		ignoredToken = 0;
 	}
 
 	/**
@@ -371,13 +388,14 @@ public class Parser {
 	/** 
 	 * @formatter:off
 	 * Statement -> 
-	 * 		{ Statement* }										[BlockStmt]
-	 * 	|	Type id = Expression;								[VarDeclStmt]
-	 *	| 	Reference = Expression;								[AssignStmt]
-	 *	|	Reference '(' ArgumentList? ')';					[CallStmt]			
-	 *	|	return Expression?;									[ReturnStmt]
-	 *	| 	if '('Expression')' Statement (else Statement)?		[IfStmt]
-	 *	| 	while '('Expression')' Statement					[WhileStmt]
+	 * 		{ Statement* }												[BlockStmt]
+	 * 	|	Type id = Expression;										[VarDeclStmt]
+	 *	| 	Reference = Expression;										[AssignStmt]
+	 *	|	Reference '(' ArgumentList? ')';							[CallStmt]			
+	 *	|	return Expression?;											[ReturnStmt]
+	 *	| 	if '('Expression')' Statement (else Statement)?				[IfStmt]
+	 *	| 	while '('Expression')' Statement							[WhileStmt]
+	 *	|	for '(' Statement?; Expression?; Statement? ) Statement 	[ForStmt]
 	 * @formatter:on
 	 */
 	Statement parseStatement() throws SyntaxError {
@@ -435,6 +453,36 @@ public class Parser {
 
 			Statement s = parseStatement();
 			return new WhileStmt(e, s, p);
+		}
+
+		// For statement
+		else if (currentToken.kind == Token.FOR) {
+			acceptIt();
+			accept(Token.LPAREN);
+
+			Statement init = null;
+			if (startsStatement(currentToken)) {
+				init = parseStatement(); // includes semicolon
+			} else {
+				accept(Token.SEMICOLON);
+			}
+
+			Expression cond = null;
+			if (startsExpression(currentToken)) {
+				cond = parseExpression();
+			}
+			accept(Token.SEMICOLON);
+
+			Statement update = null;
+			if (startsStatement(currentToken)) {
+				ignoreToken(Token.SEMICOLON); // hacky, won't work for block statements
+				update = parseStatement();
+				stopIgnoringToken();
+			}
+			accept(Token.RPAREN);
+
+			Statement body = parseStatement();
+			return new ForStmt(init, cond, update, body, p);
 		}
 
 		else if (startsType(currentToken) || startsReference(currentToken)) {
@@ -719,7 +767,7 @@ public class Parser {
 		throw new SyntaxError();
 	}
 
-	boolean startsMemberDeclaration(Token token) {
+	private boolean startsMemberDeclaration(Token token) {
 		return token.kind == Token.PUBLIC || token.kind == Token.PRIVATE || token.kind == Token.STATIC
 				|| token.kind == Token.INT || token.kind == Token.BOOLEAN || token.kind == Token.ID
 				|| token.kind == Token.VOID;
@@ -728,7 +776,7 @@ public class Parser {
 	private boolean startsStatement(Token token) {
 		return token.kind == Token.LCURLY || currentToken.kind == Token.INT || token.kind == Token.BOOLEAN
 				|| token.kind == Token.ID || token.kind == Token.THIS || token.kind == Token.RETURN
-				|| token.kind == Token.IF || token.kind == Token.WHILE;
+				|| token.kind == Token.IF || token.kind == Token.WHILE || token.kind == Token.FOR;
 	}
 
 	private boolean startsExpression(Token token) {
@@ -744,5 +792,4 @@ public class Parser {
 	private boolean startsReference(Token token) {
 		return token.kind == Token.ID || token.kind == Token.THIS;
 	}
-
 }

@@ -17,6 +17,7 @@ import miniJava.AbstractSyntaxTrees.Declaration;
 import miniJava.AbstractSyntaxTrees.Expression;
 import miniJava.AbstractSyntaxTrees.FieldDecl;
 import miniJava.AbstractSyntaxTrees.FieldDeclList;
+import miniJava.AbstractSyntaxTrees.ForStmt;
 import miniJava.AbstractSyntaxTrees.IdRef;
 import miniJava.AbstractSyntaxTrees.Identifier;
 import miniJava.AbstractSyntaxTrees.IfStmt;
@@ -153,6 +154,7 @@ public class Identification implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public Object visitPackage(Package prog, Object o) {
 
 		// Declare program classes at L1
@@ -193,6 +195,7 @@ public class Identification implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public Object visitClassDecl(ClassDecl cd, Object o) {
 		currentClass = cd;
 		table.enter("this", currentClass);
@@ -228,11 +231,13 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitFieldDecl(FieldDecl fd, Object o) {
 		fd.type.visit(this, null);
 		return null;
 	}
 
+	@Override
 	public Object visitMethodDecl(MethodDecl md, Object o) {
 		currentMethod = md;
 		md.type.visit(this, null);
@@ -255,6 +260,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitParameterDecl(ParameterDecl pd, Object o) {
 		boolean unique = table.enter(pd.name, pd);
 		if (!unique)
@@ -264,6 +270,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitVarDecl(VarDecl decl, Object o) {
 		boolean unique = table.enter(decl.name, decl);
 		if (!unique)
@@ -279,10 +286,12 @@ public class Identification implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public Object visitBaseType(BaseType type, Object o) {
 		return null;
 	}
 
+	@Override
 	public Object visitClassType(ClassType type, Object o) {
 		// Visit the identifier
 		type.className.visit(this, null);
@@ -299,6 +308,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitArrayType(ArrayType type, Object o) {
 		// Visit the identifier
 		type.eltType.visit(this, null);
@@ -311,6 +321,7 @@ public class Identification implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public Object visitBlockStmt(BlockStmt stmt, Object o) {
 		table.openScope();
 		for (Statement s : stmt.sl) {
@@ -320,6 +331,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitVardeclStmt(VarDeclStmt stmt, Object o) {
 		stmt.varDecl.visit(this, null);
 		currentVar = stmt.varDecl;
@@ -328,12 +340,14 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitAssignStmt(AssignStmt stmt, Object o) {
 		stmt.ref.visit(this, null);
 		stmt.val.visit(this, null);
 		return null;
 	}
 
+	@Override
 	public Object visitCallStmt(CallStmt stmt, Object o) {
 		stmt.methodRef.visit(this, null);
 		for (Expression e : stmt.argList) {
@@ -342,6 +356,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitReturnStmt(ReturnStmt stmt, Object o) {
 		// Return statements may not contain return expressions
 		if (stmt.returnExpr != null) {
@@ -350,6 +365,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitIfStmt(IfStmt stmt, Object o) {
 		stmt.cond.visit(this, null);
 		stmt.thenStmt.visit(this, null);
@@ -358,9 +374,24 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitWhileStmt(WhileStmt stmt, Object o) {
 		stmt.cond.visit(this, null);
 		stmt.body.visit(this, null);
+		return null;
+	}
+
+	@Override
+	public Object visitForStmt(ForStmt stmt, Object o) {
+		table.openScope();
+		if (stmt.init != null)
+			stmt.init.visit(this, null);
+		if (stmt.cond != null)
+			stmt.cond.visit(this, null);
+		if (stmt.update != null)
+			stmt.update.visit(this, null);
+		stmt.body.visit(this, null);
+		table.closeScope();
 		return null;
 	}
 
@@ -370,12 +401,14 @@ public class Identification implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public Object visitUnaryExpr(UnaryExpr expr, Object o) {
 		expr.expr.visit(this, null);
 		expr.operator.visit(this, null);
 		return null;
 	}
 
+	@Override
 	public Object visitBinaryExpr(BinaryExpr expr, Object o) {
 		expr.left.visit(this, null);
 		expr.right.visit(this, null);
@@ -383,6 +416,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitRefExpr(RefExpr expr, Object o) {
 		expr.ref.visit(this, null);
 
@@ -408,6 +442,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitCallExpr(CallExpr expr, Object o) {
 		expr.functionRef.visit(this, null);
 		for (Expression e : expr.argList) {
@@ -416,16 +451,19 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitLiteralExpr(LiteralExpr expr, Object o) {
 		expr.lit.visit(this, null);
 		return null;
 	}
 
+	@Override
 	public Object visitNewObjectExpr(NewObjectExpr expr, Object o) {
 		expr.classtype.visit(this, null);
 		return null;
 	}
 
+	@Override
 	public Object visitNewArrayExpr(NewArrayExpr expr, Object o) {
 		expr.eltType.visit(this, null);
 		expr.sizeExpr.visit(this, null);
@@ -438,6 +476,7 @@ public class Identification implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public Object visitThisRef(ThisRef ref, Object o) {
 		ref.decl = currentClass;
 		ref.spelling = "this";
@@ -447,6 +486,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitIdRef(IdRef ref, Object o) {
 		ref.id.visit(this, null);
 		ref.decl = ref.id.decl;
@@ -454,6 +494,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitQRef(QualRef ref, Object o) {
 		ref.ref.visit(this, null);
 
@@ -535,6 +576,7 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitIxRef(IxRef ref, Object o) {
 		ref.ref.visit(this, null);
 		ref.indexExpr.visit(this, null);
@@ -549,6 +591,7 @@ public class Identification implements Visitor<Object, Object> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public Object visitIdentifier(Identifier id, Object o) {
 
 		// Make sure variables aren't referenced in their declarations.
@@ -574,18 +617,22 @@ public class Identification implements Visitor<Object, Object> {
 		return null;
 	}
 
+	@Override
 	public Object visitOperator(Operator op, Object o) {
 		return null;
 	}
 
+	@Override
 	public Object visitIntLiteral(IntLiteral num, Object o) {
 		return null;
 	}
 
+	@Override
 	public Object visitBooleanLiteral(BooleanLiteral bool, Object o) {
 		return null;
 	}
 
+	@Override
 	public Object visitNullLiteral(NullLiteral nul, Object o) {
 		return null;
 	}

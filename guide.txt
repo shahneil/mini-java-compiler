@@ -3,25 +3,34 @@ MiniJava Compiler Guide
 
 Scope
 ======
-[Scope of your project. Please make clear any optional parts of the project you have
-implemented, if any. List known limitations of your implementation (it is better for you
-to identify these than for me to find them).]
+Extensions:
+
+For loops:
+- Implemented basic for loop (with optional initialization, optional loop test, optional update, and body).
+- Block statements in the initialization or update code may cause parsing errors.
+-- This is due to my parser implementation where semicolons are accepted at the end of some statements.
+-- I implemented a temporary workaround for the semicolon parsing issue due to time constraints.
 
 
 AST Changes
 ===========
-[Summary of changes to AST classes. Summarize the changes you made to the
-AbstractSyntaxTree classes that were distributed. Describe changes, if any, made to
-the AST class structure as well as additions made to the classes to support contextual
-analysis and code generation.]
-
+- Added class-specific identification tables.
+- Added type comparison in the various TypeDenoter subclasses.
+- Declarations contain runtime information (through an attached RuntimeEntity).
+- Expressions contain type information (through an attached TypeDenoter).
+- Added ForStmt (subclass of Statement) for the for-loop extension.
+- Identifiers are attached to their corresponding declarations.
+- References are attached to their corresponding declarations.
+- Added NullLiteral (subclass of Terminal).
+- Terminals contain an int 'kind' rather than a TokenKind due to Token implementation.
 
 Tests
 ======
-[A description of tests (if tests are supplied). This should describe any tests in the Tests
-directory (see below). If you are not able to run PA4Test.java you should include
-some test(s) that exercise the portion of the compiler that is working. If you have
-completed optional extensions of the project, you should include some comprehensive
-tests for each extension. You can follow the passxxx, failxxx convention we have
-been using for tests that should demonstrate correct behavior from your compiler and
-those that should be rejected by your compiler.]
+The compiler meets all the requirements from PA1-PA4 and passes all tests from the PA4 test suite.
+Below are the supplied tests for each extension (descriptions are in the test files themselves):
+
+For loops:
+fail501.java
+fail502.java
+pass501.java
+pass502.java

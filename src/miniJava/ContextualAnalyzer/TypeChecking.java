@@ -15,6 +15,7 @@ import miniJava.AbstractSyntaxTrees.ClassType;
 import miniJava.AbstractSyntaxTrees.ExprList;
 import miniJava.AbstractSyntaxTrees.Expression;
 import miniJava.AbstractSyntaxTrees.FieldDecl;
+import miniJava.AbstractSyntaxTrees.ForStmt;
 import miniJava.AbstractSyntaxTrees.IdRef;
 import miniJava.AbstractSyntaxTrees.Identifier;
 import miniJava.AbstractSyntaxTrees.IfStmt;
@@ -56,6 +57,11 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	public void check(AST prog) {
 		identification.run(prog);
 		prog.visit(this, null);
+		// After accumulating errors, end compilation early (before code generation) if
+		// there are errors.
+		if (reporter.hasErrors()) {
+			throw new Error();
+		}
 	}
 
 	private void error(String message, SourcePosition position) {
@@ -68,6 +74,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public TypeDenoter visitPackage(Package prog, Object o) {
 		for (ClassDecl c : prog.classDeclList) {
 			c.visit(this, null);
@@ -81,6 +88,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public TypeDenoter visitClassDecl(ClassDecl cd, Object o) {
 		for (FieldDecl fd : cd.fieldDeclList) {
 			fd.visit(this, null);
@@ -93,10 +101,12 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitFieldDecl(FieldDecl fd, Object o) {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitMethodDecl(MethodDecl md, Object o) {
 		StatementList sl = md.statementList;
 		boolean isVoid = md.type.typeKind == TypeKind.VOID;
@@ -161,6 +171,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitParameterDecl(ParameterDecl pd, Object o) {
 		pd.type.visit(this, null);
 
@@ -172,6 +183,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitVarDecl(VarDecl decl, Object o) {
 		decl.type.visit(this, null);
 		if (decl.type.typeKind == TypeKind.VOID) {
@@ -187,15 +199,18 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public TypeDenoter visitBaseType(BaseType type, Object o) {
 		return type;
 	}
 
+	@Override
 	public TypeDenoter visitClassType(ClassType type, Object o) {
 		type.className.visit(this, null);
 		return type;
 	}
 
+	@Override
 	public TypeDenoter visitArrayType(ArrayType type, Object o) {
 		type.eltType.visit(this, null);
 		return type;
@@ -207,6 +222,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public TypeDenoter visitBlockStmt(BlockStmt stmt, Object o) {
 		for (Statement s : stmt.sl) {
 			s.visit(this, null);
@@ -215,6 +231,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitVardeclStmt(VarDeclStmt stmt, Object o) {
 		stmt.varDecl.visit(this, null);
 
@@ -233,6 +250,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitAssignStmt(AssignStmt stmt, Object o) {
 		TypeDenoter refType = stmt.ref.visit(this, null);
 		TypeDenoter valType = stmt.val.visit(this, null);
@@ -260,6 +278,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitCallStmt(CallStmt stmt, Object o) {
 		stmt.methodRef.visit(this, null);
 
@@ -295,6 +314,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitReturnStmt(ReturnStmt stmt, Object o) {
 		// Return statements may not contain return expressions
 		if (stmt.returnExpr != null) {
@@ -303,6 +323,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitIfStmt(IfStmt stmt, Object o) {
 
 		// Check that condition evaluates to boolean
@@ -331,6 +352,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
 	public TypeDenoter visitWhileStmt(WhileStmt stmt, Object o) {
 
 		// Check that condition evaluates to boolean
@@ -350,12 +372,36 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return null;
 	}
 
+	@Override
+	public TypeDenoter visitForStmt(ForStmt stmt, Object o) {
+
+		if (stmt.init != null)
+			stmt.init.visit(this, null);
+
+		// Check that the condition, if present, evaluates to a boolean
+		if (stmt.cond != null) {
+			TypeDenoter condType = stmt.cond.visit(this, null);
+			if (condType.typeKind != TypeKind.BOOLEAN) {
+				error("Expected condition to evaluate to boolean but found " + condType.typeKind + ".",
+						condType.position);
+			}
+		}
+
+		if (stmt.update != null)
+			stmt.update.visit(this, null);
+
+		stmt.body.visit(this, null);
+
+		return null;
+	}
+
 	/////////////////////////////////////////////////////////////////////////////
 	//
 	// EXPRESSIONS
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public TypeDenoter visitUnaryExpr(UnaryExpr expr, Object o) {
 
 		// Check that operator type matches expression type
@@ -369,6 +415,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return opType;
 	}
 
+	@Override
 	public TypeDenoter visitBinaryExpr(BinaryExpr expr, Object o) {
 
 		TypeDenoter leftType = expr.left.visit(this, null);
@@ -413,11 +460,13 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return expr.operator.visit(this, null);
 	}
 
+	@Override
 	public TypeDenoter visitRefExpr(RefExpr expr, Object o) {
 		expr.type = expr.ref.visit(this, null);
 		return expr.type;
 	}
 
+	@Override
 	public TypeDenoter visitCallExpr(CallExpr expr, Object o) {
 
 		// Borrow logic from visitCallStmt
@@ -457,15 +506,18 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		return funcType;
 	}
 
+	@Override
 	public TypeDenoter visitLiteralExpr(LiteralExpr expr, Object o) {
 		expr.type = expr.lit.visit(this, null);
 		return expr.type;
 	}
 
+	@Override
 	public TypeDenoter visitNewObjectExpr(NewObjectExpr expr, Object o) {
 		return expr.classtype.visit(this, null);
 	}
 
+	@Override
 	public TypeDenoter visitNewArrayExpr(NewArrayExpr expr, Object o) {
 		TypeDenoter eltType = expr.eltType.visit(this, null);
 
@@ -490,18 +542,22 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public TypeDenoter visitThisRef(ThisRef ref, Object o) {
 		return ref.decl.type;
 	}
 
+	@Override
 	public TypeDenoter visitIdRef(IdRef ref, Object o) {
 		return ref.decl.type;
 	}
 
+	@Override
 	public TypeDenoter visitQRef(QualRef ref, Object o) {
 		return ref.decl.type;
 	}
 
+	@Override
 	public TypeDenoter visitIxRef(IxRef ref, Object o) {
 		TypeDenoter refType = ref.ref.visit(this, null);
 
@@ -543,10 +599,12 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 	//
 	/////////////////////////////////////////////////////////////////////////////
 
+	@Override
 	public TypeDenoter visitIdentifier(Identifier id, Object o) {
 		return id.decl.type;
 	}
 
+	@Override
 	public TypeDenoter visitOperator(Operator op, Object o) {
 		switch (op.spelling) {
 
@@ -572,14 +630,17 @@ public class TypeChecking implements Visitor<Object, TypeDenoter> {
 		}
 	}
 
+	@Override
 	public TypeDenoter visitIntLiteral(IntLiteral num, Object o) {
 		return new BaseType(TypeKind.INT, num.position);
 	}
 
+	@Override
 	public TypeDenoter visitBooleanLiteral(BooleanLiteral bool, Object o) {
 		return new BaseType(TypeKind.BOOLEAN, bool.position);
 	}
 
+	@Override
 	public TypeDenoter visitNullLiteral(NullLiteral nul, Object o) {
 		return new BaseType(TypeKind.NULL, nul.position);
 	}
